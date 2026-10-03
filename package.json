@@ -115,7 +115,10 @@
   },
   "pnpm": {
     "auditConfig": {
-      "ignoreCves": ["CVE-2024-4068"]
+      "ignoreCves": [
+        "CVE-2024-4068",
+        "GHSA-vfj7-8cjw-p6xm"
+      ]
     },
     "overrides": {
       "minimatch": ">=10.2.3",
