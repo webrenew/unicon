@@ -114,6 +114,9 @@
     "vitest": "^4.1.10"
   },
   "pnpm": {
+    "auditConfig": {
+      "ignoreCves": ["CVE-2024-4068"]
+    },
     "overrides": {
       "minimatch": ">=10.2.3",
       "rollup": ">=4.59.0",
