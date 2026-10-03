@@ -84,7 +84,7 @@
     "require-in-the-middle": "^8.0.1",
     "resend": "^6.18.1",
     "sonner": "^2.0.7",
-    "stripe": "^22.6.1",
+    "stripe": "^22.6.2",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3"
   },
