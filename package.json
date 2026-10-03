@@ -114,12 +114,6 @@
     "vitest": "^4.1.10"
   },
   "pnpm": {
-    "auditConfig": {
-      "ignoreCves": [
-        "CVE-2024-4068",
-        "GHSA-vfj7-8cjw-p6xm"
-      ]
-    },
     "overrides": {
       "minimatch": ">=10.2.3",
       "rollup": ">=4.59.0",

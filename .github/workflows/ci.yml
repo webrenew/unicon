@@ -37,7 +37,9 @@ jobs:
       # Remove once braces publishes a fix (no patched version as of 2026-10-03).
       - name: Audit dependencies (excluding unfixable)
         run: |
-          count=$(pnpm audit --json 2>/dev/null | jq '[.advisories | to_entries[] | select(.value.severity == "high" or .value.severity == "critical") | select(.value.github_advisory_id != "GHSA-vfj7-8cjw-p6xm")] | length')
+          report=$(pnpm audit --json || true)
+          jq -e '.advisories | type == "object"' <<<"$report" >/dev/null || { echo "pnpm audit produced no valid report" >&2; exit 1; }
+          count=$(jq '[.advisories | to_entries[] | select(.value.severity == "high" or .value.severity == "critical") | select(.value.github_advisory_id != "GHSA-vfj7-8cjw-p6xm")] | length' <<<"$report")
           if [ "$count" -gt 0 ]; then
             echo "::error::Found $count high/critical advisories (excluding known unfixable)"
             pnpm audit --audit-level=high
