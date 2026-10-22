@@ -1,0 +1,38 @@
+{
+  "writePolicies": [
+    {"check_expression": null, "command": "UPDATE", "name": "api_sessions", "permissive": "PERMISSIVE", "policy": "Users can update their own sessions", "roles": ["public"], "schema": "public", "using_expression": "(auth.uid() = user_id)"},
+    {"check_expression": null, "command": "ALL", "name": "bundles", "permissive": "PERMISSIVE", "policy": "Team admins can manage team bundles", "roles": ["public"], "schema": "public", "using_expression": "((team_id IS NOT NULL) AND is_team_admin(team_id))"},
+    {"check_expression": "(auth.uid() = user_id)", "command": "INSERT", "name": "bundles", "permissive": "PERMISSIVE", "policy": "Users can create their own bundles", "roles": ["public"], "schema": "public", "using_expression": null},
+    {"check_expression": null, "command": "DELETE", "name": "bundles", "permissive": "PERMISSIVE", "policy": "Users can delete their own bundles", "roles": ["public"], "schema": "public", "using_expression": "(auth.uid() = user_id)"},
+    {"check_expression": null, "command": "UPDATE", "name": "bundles", "permissive": "PERMISSIVE", "policy": "Users can update their own bundles", "roles": ["public"], "schema": "public", "using_expression": "(auth.uid() = user_id)"},
+    {"check_expression": null, "command": "UPDATE", "name": "profiles", "permissive": "PERMISSIVE", "policy": "Users can update their own profile", "roles": ["public"], "schema": "public", "using_expression": "(auth.uid() = id)"},
+    {"check_expression": "false", "command": "ALL", "name": "stripe_webhook_events", "permissive": "PERMISSIVE", "policy": "No direct access to webhook events", "roles": ["public"], "schema": "public", "using_expression": "false"},
+    {"check_expression": null, "command": "ALL", "name": "team_invites", "permissive": "PERMISSIVE", "policy": "Team admins can manage invites", "roles": ["public"], "schema": "public", "using_expression": "(EXISTS ( SELECT 1\n   FROM team_members\n  WHERE ((team_members.team_id = team_invites.team_id) AND (team_members.user_id = auth.uid()) AND (team_members.role = ANY (ARRAY['owner'::team_role, 'admin'::team_role])))))"},
+    {"check_expression": null, "command": "ALL", "name": "team_members", "permissive": "PERMISSIVE", "policy": "Team admins can manage members", "roles": ["public"], "schema": "public", "using_expression": "is_team_admin(team_id)"},
+    {"check_expression": null, "command": "ALL", "name": "teams", "permissive": "PERMISSIVE", "policy": "Team owners can manage their teams", "roles": ["public"], "schema": "public", "using_expression": "(auth.uid() = owner_id)"}
+  ],
+  "writableViews": [],
+  "routineAccess": {
+    "public.accept_team_invite_atomic(p_token text, p_user_id uuid, p_user_email text)": {"owner": "postgres", "security_definer": false, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.check_device_code(p_device_code text)": {"owner": "postgres", "security_definer": true, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.cleanup_expired_device_codes()": {"owner": "postgres", "security_definer": true, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.create_bundle_atomic(p_user_id uuid, p_name text, p_description text, p_icons jsonb, p_stroke_preset text, p_normalize_strokes boolean, p_target_stroke_width numeric, p_normalize_viewbox boolean, p_target_viewbox text)": {"owner": "postgres", "security_definer": true, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.create_device_code(p_client_name text, p_scope text)": {"owner": "postgres", "security_definer": true, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.generate_invite_token()": {"owner": "postgres", "security_definer": false, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.generate_secure_token(prefix text)": {"owner": "postgres", "security_definer": false, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.generate_share_slug()": {"owner": "postgres", "security_definer": false, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.generate_team_slug(p_name text)": {"owner": "postgres", "security_definer": false, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.generate_user_code()": {"owner": "postgres", "security_definer": false, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.get_user_team_ids()": {"owner": "postgres", "security_definer": true, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.handle_new_user()": {"owner": "postgres", "security_definer": true, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.is_team_admin(check_team_id uuid)": {"owner": "postgres", "security_definer": true, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.update_updated_at()": {"owner": "postgres", "security_definer": false, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.validate_api_token(p_access_token text)": {"owner": "postgres", "security_definer": true, "execute": {"anon": true, "authenticated": true, "service_role": true}},
+    "public.authorize_device_code(p_user_code text, p_user_id uuid)": {"owner": "postgres", "security_definer": true, "execute": {"anon": false, "authenticated": false, "service_role": true}},
+    "public.can_create_bundle(p_user_id uuid)": {"owner": "postgres", "security_definer": true, "execute": {"anon": false, "authenticated": false, "service_role": true}},
+    "public.create_api_token_direct(p_user_id uuid, p_name text, p_scope text)": {"owner": "postgres", "security_definer": true, "execute": {"anon": false, "authenticated": false, "service_role": true}},
+    "public.get_user_bundle_count(p_user_id uuid)": {"owner": "postgres", "security_definer": true, "execute": {"anon": false, "authenticated": false, "service_role": true}},
+    "public.list_api_sessions(p_user_id uuid)": {"owner": "postgres", "security_definer": true, "execute": {"anon": false, "authenticated": false, "service_role": true}},
+    "public.revoke_api_session(p_session_id uuid, p_user_id uuid)": {"owner": "postgres", "security_definer": true, "execute": {"anon": false, "authenticated": false, "service_role": true}}
+  }
+}

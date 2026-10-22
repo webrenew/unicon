@@ -1,0 +1,110 @@
+{
+  "capturedAt": "2026-10-22",
+  "entries": [
+    {
+      "version": "20260126000339",
+      "name": "auth_bundles_subscriptions",
+      "statementsSha256": "eb30b9d9b442834e62a537b05f230caf468eac5eabff88dc01edb8d2dc51e9c4",
+      "sourceFile": "supabase/migrations/20260126000339_auth_bundles_subscriptions.sql",
+      "sourceSha256": "204b00c9761b89211c686ac68f49f6bd56bb59f76d9c588c90df009ffd680418"
+    },
+    {
+      "version": "20260126020557",
+      "name": "atomic_bundle_creation",
+      "statementsSha256": "b80038ded0e2b4d0f2c594ed74ec68f349947490fbb1e600fa149cb9735dbd8d",
+      "sourceFile": "supabase/migrations/20260126020557_atomic_bundle_creation.sql",
+      "sourceSha256": "f193302fb7c4b30b5cc1c88113bd7c2b5cfa21383656ff8675de2b84845102e4"
+    },
+    {
+      "version": "20260126215925",
+      "name": "add_viewbox_normalization",
+      "statementsSha256": "0c53609fcbf20bcd4fe96b925658141fc6cffdd4a142c086aca5d783b3e8441d",
+      "sourceFile": "supabase/migrations/20260126215925_add_viewbox_normalization.sql",
+      "sourceSha256": "72485ad894b90d40706e6ea62333f1530e798a53ac438cfa99d61351341e2714"
+    },
+    {
+      "version": "20260203032333",
+      "name": "device_auth",
+      "statementsSha256": "3a3397c1be073d382a5df6d6223bf7d3288d8c68d706c4ac9e113dbd2b6be10b",
+      "sourceFile": "supabase/migrations/20260203032333_device_auth.sql",
+      "sourceSha256": "a8b433c99835610d1920a8ba5e9a5123141ee6345dc17111ec603089a08af3ce"
+    },
+    {
+      "version": "20260206161903",
+      "name": "teams_system",
+      "statementsSha256": "858ec160fcec2957ecb387287375a2c32315ae2169dfcf02bac6a15e70bcb3cc",
+      "sourceFile": "supabase/migrations/20260206161903_teams_system.sql",
+      "sourceSha256": "28ee7eadecd13448c52b138b3cbed8b9632c3b0cda03b76be5baab216eba9c25"
+    },
+    {
+      "version": "20260210170923",
+      "name": "set_function_search_path_immutable",
+      "statementsSha256": "016ac6409d80feae1c94467650c125408d210719f4fbc9652c69b3ddede5ef3b",
+      "sourceFile": "supabase/migrations/20260210170923_set_function_search_path_immutable.sql",
+      "sourceSha256": "5d17564382a963e457238c5c96368d78598af6f916956af83156125445000161"
+    },
+    {
+      "version": "20260214194022",
+      "name": "fix_team_members_rls_infinite_recursion",
+      "statementsSha256": "f293b1ea38e6ca01806c41c53f6c1699ea46f1e8e6d6e9f08991188770907880",
+      "sourceFile": "supabase/migrations/20260214194022_fix_team_members_rls_infinite_recursion.sql",
+      "sourceSha256": "f7a99ab1aef4116e4760a43fb97d784aa159c7ce2a430bc7e03bb7f70b10866e"
+    },
+    {
+      "version": "20260214195133",
+      "name": "api_tokens_direct",
+      "statementsSha256": "a6f49e353e223c141fa0663dd739cffce5ec6576ccaca294462849db66332d59",
+      "sourceFile": "supabase/migrations/20260214195133_api_tokens_direct.sql",
+      "sourceSha256": "9455cdaf7be364812eb81ffd2faf53083631f05b7c221a909119a001ff7fec6a"
+    },
+    {
+      "version": "20260214204154",
+      "name": "api_token_management",
+      "statementsSha256": "7033badd76039bca5936752ef8eec39782147e6ea9e35c42be1bf722daf5ad35",
+      "sourceFile": "supabase/migrations/20260214204154_api_token_management.sql",
+      "sourceSha256": "d000a077273276774ec55ce1aab8d14398b884a51a4d649ca188192fe2f033ef"
+    },
+    {
+      "version": "20260214211539",
+      "name": "team_logo",
+      "statementsSha256": "399cc0658d4b93172e0665f55796037dc29cac7b90225ad0c7fb292ddad6cdd7",
+      "sourceFile": "supabase/migrations/20260214211539_team_logo.sql",
+      "sourceSha256": "b6a4fd7168502ff7dc130e9919bd74f0494906fd2de69c91628979df07e129a4"
+    },
+    {
+      "version": "20260220161049",
+      "name": "fix_create_bundle_atomic_search_path",
+      "statementsSha256": "31a2880e52431df72abc6e6f90ea0b39a60b314ebe5c95a01394f5a8fe32b8ad",
+      "sourceFile": "supabase/migrations/20260220161049_fix_create_bundle_atomic_search_path.sql",
+      "sourceSha256": "da920206bde8f1eeceb9a7711edbf9567afa49ba21605e7461d610f9cb3014ff"
+    },
+    {
+      "version": "20260304140713",
+      "name": "fix_functions_and_add_fk_indexes",
+      "statementsSha256": "562f5953ae2bcd14644362cff98d34e01979841f30604e73476152be317bc112",
+      "sourceFile": "supabase/migrations/20260304140713_fix_functions_and_add_fk_indexes.sql",
+      "sourceSha256": "b5197dee05409c88139966a5051a3b1fa13128a889adf770cbc00e24ff24908b"
+    },
+    {
+      "version": "20260612171422",
+      "name": "use_csprng_for_token_generation",
+      "statementsSha256": "b4e01670532163c26cbf85a3f330353937e2e86e7d7a9cb02622b235fd2df716",
+      "sourceFile": "supabase/migrations/20260612171422_use_csprng_for_token_generation.sql",
+      "sourceSha256": "0ed14b1ecdf191ec2e781c0cc4ab90416056edcff605989452cf5a92491f23e0"
+    },
+    {
+      "version": "20260720221218",
+      "name": "stripe_webhook_events",
+      "statementsSha256": "3361cfc4a627f1665f9e1cb90fae5c1a31ac9703045d1373aaa796cb1b5b7e8e",
+      "sourceFile": "supabase/migrations/20260720221218_stripe_webhook_events.sql",
+      "sourceSha256": "396c3c754f8fdfdc6ec316fd84df58bd713502c8bd69e1e0d23dd4964ed8e9b7"
+    },
+    {
+      "version": "20260720222716",
+      "name": "bind_invite_acceptance_to_email",
+      "statementsSha256": "0af842ab6e091c2302206beab86e31aa61e2d92d33bc93d7cd70e43506d22ffb",
+      "sourceFile": "supabase/migrations/20260720222716_bind_invite_acceptance_to_email.sql",
+      "sourceSha256": "7415834d50e9001c99430e32730ecb9ff990d85a5f9879316d6ee89c62a164de"
+    }
+  ]
+}
