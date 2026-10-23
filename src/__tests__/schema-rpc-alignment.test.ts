@@ -12,7 +12,7 @@ const allMigrationSql = readdirSync(migrationsDir)
 describe("schema/RPC migration alignment", () => {
   it("includes teams.logo_url used by team logo routes", () => {
     expect(allMigrationSql).toMatch(
-      /alter\s+table\s+public\.teams[\s\S]*add\s+column\s+if\s+not\s+exists\s+logo_url\s+text/i
+      /alter\s+table\s+(?:public\.)?teams\s+add\s+column\s+(?:if\s+not\s+exists\s+)?logo_url\s+text/i
     );
   });
 

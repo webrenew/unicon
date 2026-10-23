@@ -115,14 +115,18 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## CI Checks
 
-Pull requests run two required GitHub Actions checks:
+Pull requests run these GitHub Actions checks:
 
 - `Lint, Typecheck & Build`
 - `Test Coverage`
+- `Data API permission contract` (disposable Supabase replay)
 
 To mirror CI locally:
 
 ```bash
+pnpm security:migration-grants
+pnpm test:migration-grants
+pnpm test:data-api-grants
 pnpm lint
 pnpm typecheck
 pnpm test:coverage

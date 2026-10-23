@@ -1,0 +1,46 @@
+{
+  "reviewedChangeMigrations": ["20261023010000_secure_bundle_rpc.sql"],
+  "rpcRepairTarget": "public.create_bundle_atomic(uuid, text, text, jsonb, text, boolean, numeric, boolean, text)",
+  "mode": "migrations",
+  "directory": "supabase/migrations",
+  "baseline": "20261022233614_explicit_data_api_grants.sql",
+  "historical": {
+    "20260126000339_auth_bundles_subscriptions.sql": "204b00c9761b89211c686ac68f49f6bd56bb59f76d9c588c90df009ffd680418",
+    "20260126020557_atomic_bundle_creation.sql": "f193302fb7c4b30b5cc1c88113bd7c2b5cfa21383656ff8675de2b84845102e4",
+    "20260126215925_add_viewbox_normalization.sql": "72485ad894b90d40706e6ea62333f1530e798a53ac438cfa99d61351341e2714",
+    "20260203032333_device_auth.sql": "a8b433c99835610d1920a8ba5e9a5123141ee6345dc17111ec603089a08af3ce",
+    "20260206161903_teams_system.sql": "28ee7eadecd13448c52b138b3cbed8b9632c3b0cda03b76be5baab216eba9c25",
+    "20260210170923_set_function_search_path_immutable.sql": "5d17564382a963e457238c5c96368d78598af6f916956af83156125445000161",
+    "20260214194022_fix_team_members_rls_infinite_recursion.sql": "f7a99ab1aef4116e4760a43fb97d784aa159c7ce2a430bc7e03bb7f70b10866e",
+    "20260214195133_api_tokens_direct.sql": "9455cdaf7be364812eb81ffd2faf53083631f05b7c221a909119a001ff7fec6a",
+    "20260214204154_api_token_management.sql": "d000a077273276774ec55ce1aab8d14398b884a51a4d649ca188192fe2f033ef",
+    "20260214211539_team_logo.sql": "b6a4fd7168502ff7dc130e9919bd74f0494906fd2de69c91628979df07e129a4",
+    "20260220161049_fix_create_bundle_atomic_search_path.sql": "da920206bde8f1eeceb9a7711edbf9567afa49ba21605e7461d610f9cb3014ff",
+    "20260304140713_fix_functions_and_add_fk_indexes.sql": "b5197dee05409c88139966a5051a3b1fa13128a889adf770cbc00e24ff24908b",
+    "20260612171422_use_csprng_for_token_generation.sql": "0ed14b1ecdf191ec2e781c0cc4ab90416056edcff605989452cf5a92491f23e0",
+    "20260720221218_stripe_webhook_events.sql": "396c3c754f8fdfdc6ec316fd84df58bd713502c8bd69e1e0d23dd4964ed8e9b7",
+    "20260720222716_bind_invite_acceptance_to_email.sql": "7415834d50e9001c99430e32730ecb9ff990d85a5f9879316d6ee89c62a164de"
+  },
+  "legacyFilenames": [],
+  "dateVersions": false,
+  "legacyDirectory": "supabase/legacy-migrations",
+  "legacyHashes": {
+    "20260125000000_auth_bundles_subscriptions.sql": "204b00c9761b89211c686ac68f49f6bd56bb59f76d9c588c90df009ffd680418",
+    "20260125000001_atomic_bundle_creation.sql": "f193302fb7c4b30b5cc1c88113bd7c2b5cfa21383656ff8675de2b84845102e4",
+    "20260203000000_device_auth.sql": "a8b433c99835610d1920a8ba5e9a5123141ee6345dc17111ec603089a08af3ce",
+    "20260207000000_teams.sql": "a310276269ab189a7a5970fe98762e390fcc3cd5053fd11500eb55dbb9026f8a",
+    "20260216000000_accept_team_invite_atomic.sql": "faeed103178a8922ac6996fbd1125a7900cf10e8fe6a0afc258de244c42d7802",
+    "20260216010000_stripe_webhook_events.sql": "396c3c754f8fdfdc6ec316fd84df58bd713502c8bd69e1e0d23dd4964ed8e9b7",
+    "20260216180000_device_auth_polling_slowdown.sql": "1b47c582e350c976bc5f7c5b1d959c7a604905b8a453689b1eb9564c82c80513",
+    "20260218170000_schema_rpc_alignment.sql": "e4a5645aa093fb1cff304db772223bc8c2859458aac9cfc3df8e8b8b46f9143b",
+    "20260218182000_bind_invite_acceptance_to_email.sql": "7415834d50e9001c99430e32730ecb9ff990d85a5f9879316d6ee89c62a164de",
+    "20260623190000_lockdown_security_definer_rpcs.sql": "88de464ca5c65462d75fe61817fb9cfa943f921abc07f8dda697b1e3c3b1c284"
+  },
+  "preBaselineMigrations": [
+    "20261022233613_recover_current_rpc_contract.sql"
+  ],
+  "rpcRecoveryFunctions": [
+    "public.validate_api_token(text)",
+    "public.authorize_device_code(text,uuid)"
+  ]
+}

@@ -88,6 +88,32 @@ describe("POST /api/bundles", () => {
     expect(sanitizedSvg).not.toContain("javascript:");
   });
 
+  it("returns 403 for RPC permission denial without exposing database details", async () => {
+    const supabase: MockSupabaseClient = {
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: "user-1" } },
+          error: null,
+        }),
+      },
+      rpc: vi.fn().mockResolvedValue({
+        data: null,
+        error: { code: "42501", message: "Internal ownership guard details" },
+      }),
+    };
+    createClientMock.mockResolvedValue(supabase as unknown as Awaited<ReturnType<typeof createClient>>);
+
+    const response = await POST(
+      new Request("https://example.com/api/bundles", {
+        method: "POST",
+        body: JSON.stringify({ name: "test", icons: [] }),
+      })
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Permission denied" });
+  });
+
   it("returns 400 for invalid icon payload arrays", async () => {
     const supabase: MockSupabaseClient = {
       auth: {
