@@ -153,3 +153,8 @@ Trusted server calls use the service key through PostgREST (which sets ROLE),
 or an explicit SET LOCAL ROLE service_role in a privileged SQL session. The
 reviewed service_role is NOLOGIN; direct service_role login is not a supported
 connection path. Client role-claim text alone cannot select that exemption.
+
+The proof pins the repair checkpoint separately in rpc-repair-summary.json.
+Future table/index migrations run after that checkpoint and use the final
+expected-summary.json and role/security contracts. They do not get folded into
+the RPC-only transaction or require rewriting the applied repair checkpoint.

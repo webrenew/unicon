@@ -1,3 +1,5 @@
+import assert from 'node:assert/strict'
+
 // The baseline must precede every later migration, including in catalog-fixture proofs.
 export function replayPlan(config, names) {
   const before = []
@@ -15,3 +17,11 @@ export function replayPlan(config, names) {
   return { before: ordered(before), after: ordered(after) }
 }
 
+
+// Preserve the RPC checkpoint while letting later reviewed schema work replay normally.
+export function repairStages(after, reviewed) {
+  assert.ok(Array.isArray(reviewed) && reviewed.length, 'A reviewed RPC checkpoint is required')
+  const repair = after.slice(0, reviewed.length)
+  assert.deepEqual(repair, reviewed, 'The RPC repair must be the first exact post-baseline checkpoint')
+  return { repair, later: after.slice(reviewed.length) }
+}

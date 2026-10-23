@@ -11,7 +11,7 @@ import { assertSecurityPosture } from './data-api-grants/security-posture.mjs'
 import { assertReviewedRoleAccess } from './data-api-grants/role-access.mjs'
 import { assertRoutineAccess } from './data-api-grants/routine-access.mjs'
 import { buildApplyTransaction } from './data-api-grants/transaction.mjs'
-import { replayPlan } from './data-api-grants/replay-plan.mjs'
+import { replayPlan, repairStages } from './data-api-grants/replay-plan.mjs'
 import { auditMigrationGrants } from './check-migration-grants.mjs'
 import { assertSnapshotContract, parseProofArguments, proofDirectory,
   proofUsage, snapshotQueryBody, stopProofDatabase, writeProofSnapshot } from './data-api-grants/proof-support.mjs'
@@ -153,7 +153,10 @@ function proof() {
     const restored = securityFixture(`missing-rpc-recovered-${index}`, `drop function ${signature};\n${recovery}`)
     assert.deepEqual(compareSnapshots(initial, restored), [], 'Missing RPC recovery must restore the original contract')
   }
-  verifyReviewedRpcRepair(replay.after, initial, expected)
+  const stages = repairStages(replay.after, config.reviewedChangeMigrations)
+  const repairedSummary = JSON.parse(readFileSync(join(root, 'scripts/data-api-grants/rpc-repair-summary.json'), 'utf8'))
+  verifyReviewedRpcRepair(stages.repair, initial, repairedSummary)
+  for (const name of stages.later) query(readFileSync(join(root, config.directory, name), 'utf8'))
   const withBaseline = capture('with-baseline')
   assertReviewedRoleAccess(withBaseline, rolePlan)
   assertSnapshotContract(withBaseline, expected, join(outputDirectory, 'with-baseline.json'))
@@ -197,7 +200,7 @@ function verifyReviewedRpcRepair(files, before, expected) {
     'An unreviewed RPC grant must roll back the entire repair')
   query(buildApplyTransaction(snapshotSql, before, ledger, migrations,
     beforeSummary, { snapshot: after, summary: expected }))
-  assert.deepEqual(compareSnapshots(after, capture('after-reviewed-repair')), [],
+  assert.deepEqual(compareSnapshots(after, capture('after-reviewed-repair', false)), [],
     'Approved transition must reach exactly the reviewed post-state')
 }
 

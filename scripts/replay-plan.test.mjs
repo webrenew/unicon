@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
-import { replayPlan } from './data-api-grants/replay-plan.mjs'
+import { replayPlan, repairStages } from './data-api-grants/replay-plan.mjs'
 import { buildApplyTransaction } from './data-api-grants/transaction.mjs'
 import { categories, summarize } from './data-api-grants/metadata.mjs'
 import { findGrantProblems } from './check-migration-grants.mjs'
@@ -58,5 +58,17 @@ test('RPC repair post-state must preserve production defaults and table grants',
     assert.throws(() => buildApplyTransaction(sql, before, [{ version: '20260101000000' }],
       [{ filename: '20261023010000_repair.sql', sql: 'select 1;' }], summarize(before),
       { snapshot: after, summary: summarize(after) }), /must preserve current production metadata/)
+  }
+})
+
+test('later table and index migrations run after the pinned RPC repair checkpoint', () => {
+  const repair = '20261023010000_rpc_repair.sql'
+  const later = ['20261024000000_new_table.sql', '20261025000000_new_index.sql']
+  assert.deepEqual(repairStages([repair, ...later], [repair]), { repair: [repair], later })
+})
+test('unreviewed SQL cannot slip before or replace the RPC checkpoint', () => {
+  const repair = '20261023010000_rpc_repair.sql'
+  for (const files of [[], ['20261023000000_unreviewed.sql', repair], ['20261023010000_other.sql']]) {
+    assert.throws(() => repairStages(files, [repair]), /first exact post-baseline checkpoint/)
   }
 })
