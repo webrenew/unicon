@@ -180,7 +180,8 @@ function verifyReviewedRpcRepair(files, before, expected) {
   assertSnapshotContract(before, beforeSummary, 'before-rpc-repair')
   const migrations = files.map(filename => ({ filename,
     sql: readFileSync(join(root, config.directory, filename), 'utf8') }))
-  assert.equal(migrations.length, 1, 'Review a new transition before adding another permission-changing migration')
+  assert.deepEqual(files, config.reviewedChangeMigrations,
+    'Review the exact transition before changing the pending permission migrations')
   const after = securityFixture('reviewed-rpc-repair', migrations.map(row => row.sql).join('\n'))
   assertSnapshotContract(after, expected, 'reviewed-rpc-repair')
   const historySql = 'select jsonb_agg(to_jsonb(m) order by version) from supabase_migrations.schema_migrations m;'
