@@ -298,8 +298,9 @@ try {
       lifecycle.started = true
     }
     catch (error) {
-      writeFileSync(join(scratch, 'startup.log'), `${error.stdout ?? ''}\n${error.stderr ?? ''}`)
-      throw new Error(`Disposable database setup or migration replay failed. Inspect ${join(scratch, 'startup.log')}`)
+      const startupLog = join(outputDirectory, 'startup.log')
+      writeFileSync(startupLog, `${error.stdout ?? ''}\n${error.stderr ?? ''}`, { mode: 0o600 })
+      throw new Error(`Disposable database setup or migration replay failed. Inspect ${startupLog}`)
     }
     query("do $$ begin if to_regclass('cron.job') is not null then perform cron.unschedule(jobid) from cron.job; end if; end $$;")
     proof()
