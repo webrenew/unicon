@@ -155,7 +155,7 @@ function proof() {
   }
   const stages = repairStages(replay.after, config.reviewedChangeMigrations)
   const repairedSummary = JSON.parse(readFileSync(join(root, 'scripts/data-api-grants/rpc-repair-summary.json'), 'utf8'))
-  verifyReviewedRpcRepair(stages.repair, initial, repairedSummary)
+  verifyReviewedRpcRepair(stages.repair, initial, beforeSummary, repairedSummary)
   for (const name of stages.later) query(readFileSync(join(root, config.directory, name), 'utf8'))
   const withBaseline = capture('with-baseline')
   assertReviewedRoleAccess(withBaseline, rolePlan)
@@ -180,8 +180,7 @@ function proof() {
   assert.deepEqual(compareSnapshots(withBaseline, capture('after-fixtures')), [], 'Fixture and sentinel checks must roll back')
 }
 
-function verifyReviewedRpcRepair(files, before, expected) {
-  const beforeSummary = JSON.parse(readFileSync(join(root, 'scripts/data-api-grants/before-rpc-repair-summary.json'), 'utf8'))
+function verifyReviewedRpcRepair(files, before, beforeSummary, expected) {
   assertSnapshotContract(before, beforeSummary, 'before-rpc-repair')
   const migrations = files.map(filename => ({ filename,
     sql: readFileSync(join(root, config.directory, filename), 'utf8') }))
