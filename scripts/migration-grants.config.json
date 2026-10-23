@@ -36,5 +36,9 @@
   },
   "preBaselineMigrations": [
     "20261022233613_recover_current_rpc_contract.sql"
+  ],
+  "rpcRecoveryFunctions": [
+    "public.validate_api_token(text)",
+    "public.authorize_device_code(text,uuid)"
   ]
 }

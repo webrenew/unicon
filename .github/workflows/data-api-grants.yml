@@ -26,7 +26,7 @@ jobs:
         with:
           version: 2.120.0
       - name: Check SQL access decisions and negative controls
-        run: node scripts/check-migration-grants.mjs && node --test scripts/check-migration-grants.test.mjs scripts/security-grants.test.mjs scripts/role-access.test.mjs scripts/migration-history.test.mjs
+        run: node --run security:migration-grants && node --run test:migration-grants
       - name: Verify permissions with October 30 defaults
         run: node scripts/test-data-api-grants.mjs --snapshot-dir "$RUNNER_TEMP/data-api-grants"
       - uses: actions/upload-artifact@v7

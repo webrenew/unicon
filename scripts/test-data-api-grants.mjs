@@ -10,6 +10,7 @@ import { verifySecurityControls } from './data-api-grants/security-controls.mjs'
 import { assertSecurityPosture } from './data-api-grants/security-posture.mjs'
 import { assertReviewedRoleAccess } from './data-api-grants/role-access.mjs'
 import { assertRoutineAccess } from './data-api-grants/routine-access.mjs'
+import { buildApplyTransaction } from './data-api-grants/transaction.mjs'
 import { assertSnapshotContract, parseProofArguments, proofDirectory,
   proofUsage, snapshotQueryBody, stopProofDatabase, writeProofSnapshot } from './data-api-grants/proof-support.mjs'
 
@@ -148,7 +149,39 @@ function proof() {
   assert.deepEqual(compareSnapshots(withBaseline, capture('reapplied')), [], 'Reapplication must preserve every permission tuple')
   verifySentinels()
   verifySecurityControls(withBaseline, security, securityFixture)
+  const recovery = (config.preBaselineMigrations ?? [])
+    .map((file) => readFileSync(join(root, config.directory, file), 'utf8')).join('\n')
+  for (const [index, signature] of (config.rpcRecoveryFunctions ?? []).entries()) {
+    const restored = securityFixture(`missing-rpc-recovered-${index}`,
+      `drop function ${signature};\n${recovery}`)
+    assertRoutineAccess(restored, security.routineAccess)
+    assertSnapshotContract(restored, expected, join(outputDirectory, `missing-rpc-recovered-${index}.json`))
+  }
   assert.deepEqual(compareSnapshots(withBaseline, capture('after-fixtures')), [], 'Fixture and sentinel checks must roll back')
+  verifyAtomicApplication(capture('before-atomic-apply'))
+}
+
+function verifyAtomicApplication(expected) {
+  const files = [...(config.preBaselineMigrations ?? []), config.baseline]
+  // Only the unique disposable database is connected here. Recreate the pending
+  // ledger state without changing any application table or permission.
+  const versions = files.map((file) => `'${file.split('_')[0]}'`).join(',')
+  query(`delete from supabase_migrations.schema_migrations where version in (${versions});`)
+  const historySql = 'select jsonb_agg(to_jsonb(m) order by version) from supabase_migrations.schema_migrations m;'
+  const ledger = JSON.parse(query(historySql))
+  const migrations = files.map((filename) => ({ filename,
+    sql: readFileSync(join(root, config.directory, filename), 'utf8') }))
+  query(buildApplyTransaction(snapshotSql, expected, ledger, migrations))
+  assert.deepEqual(compareSnapshots(expected, capture('after-atomic-apply')), [], 'Atomic apply must preserve all permissions')
+  const recorded = JSON.parse(query(historySql))
+  assert.equal(recorded.length, ledger.length + files.length)
+  const table = expected.objects.find((row) => row.kind === 'r')
+  const changed = [{ filename: '20990101000000_atomic_negative.sql',
+    sql: `revoke select on public."${table.name.replaceAll('"', '""')}" from anon;` }]
+  assert.throws(() => query(buildApplyTransaction(snapshotSql, expected, recorded, changed)),
+    /Permission contract drift after migration/)
+  assert.deepEqual(JSON.parse(query(historySql)), recorded, 'Failed apply must roll back its ledger entry')
+  assert.deepEqual(compareSnapshots(expected, capture('after-atomic-rollback')), [], 'Failed apply must roll back its ACL change')
 }
 
 function verifyRoleQueries(snapshot) {

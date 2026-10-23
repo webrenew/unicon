@@ -11,7 +11,12 @@ import { assertSnapshotContract, proofDirectory, snapshotQueryBody, writeProofSn
 import { compareSnapshots, summarize } from './data-api-grants/metadata.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const contract = { writePolicies: [], writableViews: [] }
+const contract = { writePolicies: [], writableViews: [], privateClientObjects: [] }
+test('omitting the private-object decision fails closed', () => {
+  const omitted = { ...contract }
+  delete omitted.privateClientObjects
+  assert.throws(() => assertSecurityPosture(snapshot(), omitted), /Explicit private-object contract required/)
+})
 test('snapshot fixtures fail clearly when transaction wrappers change', () => {
   const valid = 'begin isolation level repeatable read read only;\nselect 1;\ncommit;'
   assert.equal(snapshotQueryBody(valid).trim(), 'select 1;')
@@ -169,7 +174,7 @@ test('snapshot output fails closed on Git ownership and configuration errors', a
     }
     await assert.rejects(stat(join(directory, 'never-created')), { code: 'ENOENT' })
     for (const detail of ['or any of the parent directories): .git', 'or any parent up to mount point /mnt)']) {
-      await writeFile(join(bin, 'git'), `#!/bin/sh\necho 'fatal: not a git repository (${detail}' >&2\nexit 128\n`)
+      await writeFile(join(bin, 'git'), `#!/bin/sh\necho 'fatal: not a git repository (${detail}' >&2\nexit 128\n`, { mode: 0o700 })
       process.env.PATH = `${bin}:${previous}`
       try { assert.ok(proofDirectory(join(directory, 'outside-check'), directory)) }
       finally { process.env.PATH = previous }

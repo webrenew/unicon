@@ -1,4 +1,5 @@
 {
+  "privateClientObjects": [],
   "writePolicies": [
     {"check_expression": null, "command": "UPDATE", "name": "api_sessions", "permissive": "PERMISSIVE", "policy": "Users can update their own sessions", "roles": ["public"], "schema": "public", "using_expression": "(auth.uid() = user_id)"},
     {"check_expression": null, "command": "ALL", "name": "bundles", "permissive": "PERMISSIVE", "policy": "Team admins can manage team bundles", "roles": ["public"], "schema": "public", "using_expression": "((team_id IS NOT NULL) AND is_team_admin(team_id))"},
