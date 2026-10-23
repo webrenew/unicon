@@ -152,6 +152,15 @@ function proof() {
   for (const [index, signature] of (config.rpcRecoveryFunctions ?? []).entries()) {
     const restored = securityFixture(`missing-rpc-recovered-${index}`, `drop function ${signature};\n${recovery}`)
     assert.deepEqual(compareSnapshots(initial, restored), [], 'Missing RPC recovery must restore the original contract')
+    const name = signature.slice('public.'.length).split('(')[0]
+    const original = initial.routines.find(row => row.schema === 'public' && row.name === name)
+    assert.ok(original, 'Expected the reviewed RPC definition')
+    const hotfix = original.definition.replace('AS $function$\n', 'AS $function$\n-- unreviewed hotfix\n')
+    assert.notEqual(hotfix, original.definition, 'Hotfix fixture must change the function definition')
+    assert.throws(() => query(`begin; ${hotfix};\n${recovery}\nrollback;`),
+      /Unrecognized .* definition; recovery aborted/)
+    assert.deepEqual(compareSnapshots(initial, capture(`unrecognized-rpc-rollback-${index}`, false)), [],
+      'Unknown RPC definition must abort recovery and roll back its transaction')
   }
   const stages = repairStages(replay.after, config.reviewedChangeMigrations)
   const repairedSummary = JSON.parse(readFileSync(join(root, 'scripts/data-api-grants/rpc-repair-summary.json'), 'utf8'))

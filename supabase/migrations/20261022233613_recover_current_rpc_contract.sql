@@ -6,6 +6,11 @@
 do $rpc_recovery$
 begin
   if md5(pg_get_functiondef(to_regprocedure('public.validate_api_token(text)'))) is distinct from 'cb0db74839c1ca6bf47ddb1aa99b3a59' then
+    -- Accept only the reviewed historical replay definition or a missing RPC.
+    if to_regprocedure('public.validate_api_token(text)') is not null
+       and md5(pg_get_functiondef(to_regprocedure('public.validate_api_token(text)'))) is distinct from '1bb8c017bbb7cd96247ba26ee2d2afd8' then
+      raise exception 'Unrecognized validate_api_token definition; recovery aborted';
+    end if;
     raise notice 'Restoring public.validate_api_token from the reviewed PostgreSQL 17 catalog definition';
 CREATE OR REPLACE FUNCTION public.validate_api_token(p_access_token text)
  RETURNS TABLE(valid boolean, user_id uuid, scope text, is_pro boolean, error text)
@@ -60,6 +65,10 @@ $rpc_recovery$;
 do $rpc_recovery$
 begin
   if md5(pg_get_functiondef(to_regprocedure('public.authorize_device_code(text,uuid)'))) is distinct from 'f1210bb9b8791d39197c0cad14ecc0b0' then
+    if to_regprocedure('public.authorize_device_code(text,uuid)') is not null
+       and md5(pg_get_functiondef(to_regprocedure('public.authorize_device_code(text,uuid)'))) is distinct from 'b6bf93eaaf423ee027432ac07a94a38b' then
+      raise exception 'Unrecognized authorize_device_code definition; recovery aborted';
+    end if;
     raise notice 'Restoring public.authorize_device_code from the reviewed PostgreSQL 17 catalog definition';
 CREATE OR REPLACE FUNCTION public.authorize_device_code(p_user_code text, p_user_id uuid)
  RETURNS TABLE(success boolean, client_name text, scope text, error text)
