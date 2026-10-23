@@ -10,10 +10,14 @@ function literal(value, tag, occupied) {
 
 // Builds one transaction from reviewed source and a fresh metadata-only snapshot.
 // A mismatch before or after any migration aborts every SQL and ledger change.
-export function buildApplyTransaction(snapshotSql, expected, ledger, migrations, reviewedSummary) {
+export function buildApplyTransaction(snapshotSql, expected, ledger, migrations, reviewedSummary, reviewedChange) {
   assert.deepEqual(Object.keys(expected).sort(), [...categories, 'defaults'].sort(),
     'A complete production permission snapshot is required')
   assertSnapshotContract(expected, reviewedSummary, 'Caller-supplied production snapshot')
+  const expectedAfter = reviewedChange?.snapshot ?? expected
+  assert.deepEqual(Object.keys(expectedAfter).sort(), [...categories, 'defaults'].sort(),
+    'A complete reviewed post-state snapshot is required')
+  assertSnapshotContract(expectedAfter, reviewedChange?.summary ?? reviewedSummary, 'Reviewed post-state snapshot')
   assert.ok(Array.isArray(ledger) && ledger.length, 'A complete nonempty migration ledger is required')
   assert.ok(Array.isArray(migrations) && migrations.length, 'No reviewed migrations supplied')
   const versions = migrations.map(({ filename }) => {
@@ -28,7 +32,7 @@ export function buildApplyTransaction(snapshotSql, expected, ledger, migrations,
   const body = snapshotQueryBody(snapshotSql)
     .replace(' as snapshot\nfrom (values', ' into observed\nfrom (values')
   assert.ok(body.includes(' into observed\nfrom (values'), 'Snapshot query output changed')
-  const content = body + JSON.stringify(expected) + JSON.stringify(ledger) + migrations.map((row) => row.sql).join('\n')
+  const content = body + JSON.stringify(expected) + JSON.stringify(expectedAfter) + JSON.stringify(ledger) + migrations.map((row) => row.sql).join('\n')
   let outer = 'production_grants_apply'
   while (content.includes('$' + outer + '$')) outer += '_'
   const sql = [
@@ -38,6 +42,7 @@ export function buildApplyTransaction(snapshotSql, expected, ledger, migrations,
     'do $' + outer + '$',
     'declare',
     '  expected jsonb := ' + literal(JSON.stringify(expected), 'reviewed_permissions', content) + '::jsonb;',
+    '  expected_after jsonb := ' + literal(JSON.stringify(expectedAfter), 'reviewed_post_state', content) + '::jsonb;',
     '  expected_history jsonb := ' + literal(JSON.stringify(ledger), 'reviewed_ledger', content) + '::jsonb;',
     '  observed jsonb;',
     '  actual_history jsonb;',
@@ -55,7 +60,7 @@ export function buildApplyTransaction(snapshotSql, expected, ledger, migrations,
       + version + "','" + name + "',array[" + literal(migration.sql, 'migration_source', content) + ']);')
   }
   sql.push(body,
-    "if observed is distinct from expected then raise exception 'Permission contract drift after migration; transaction rolled back'; end if;",
+    "if observed is distinct from expected_after then raise exception 'Permission contract drift after migration; transaction rolled back'; end if;",
     'end;', '$' + outer + '$;', 'commit;', '')
   return sql.join('\n')
 }

@@ -35,3 +35,17 @@ test('transaction uses null-safe guards and includes the snapshot body when choo
   assert.ok(transaction.includes('$production_grants_apply_$;'))
 })
 
+
+test('intentional changes require an independently reviewed post-state contract', async () => {
+  const sql = await readFile(new URL('./data-api-grants/snapshot.sql', import.meta.url), 'utf8')
+  const before = Object.fromEntries([...categories, 'defaults'].map((name) => [name, []]))
+  const after = { ...before, routines: [{ name: 'reviewed_repair' }] }
+  const ledger = [{ version: '20260101000000' }]
+  const migrations = [{ filename: '20261023010000_repair.sql', sql: 'select 1;' }]
+  assert.throws(() => buildApplyTransaction(sql, before, ledger, migrations, summarize(before),
+    { snapshot: after, summary: summarize(before) }), /Permission contract mismatch: routines/)
+  const transaction = buildApplyTransaction(sql, before, ledger, migrations, summarize(before),
+    { snapshot: after, summary: summarize(after) })
+  assert.ok(transaction.includes('expected_after jsonb := '))
+  assert.ok(transaction.includes('if observed is distinct from expected_after then'))
+})

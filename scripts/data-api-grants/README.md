@@ -113,4 +113,22 @@ confirming the correct live project, current commit, ledger and snapshot.
 Later migrations always replay after the baseline in CI, including catalog-fixture
 proofs; the baseline is never reapplied over a later intentional privilege change.
 
+## Proposed RPC authorization repair
+
+This draft additionally proposes `20261023010000_secure_bundle_rpc.sql` for #243.
+It revokes anonymous bundle creation, binds authenticated callers to their own
+user ID, and restricts token validation to the server's service role. The existing
+web session and trusted MCP paths remain supported. Table grants stay unchanged.
+This is a permission change and requires explicit owner approval before applying
+or merging; the permission-neutral command above applies only to parent #242.
+
+The builder accepts a sixth argument `{ snapshot, summary }` for an independently
+reviewed post-state. Both states must have complete snapshots and matching pinned
+summaries. `before-rpc-repair-summary.json` pins the parent baseline, while
+`expected-summary.json` pins the repair. The database proof checks the intended
+transition, actual caller authorization, and complete rollback when an extra
+anonymous EXECUTE grant is injected. Applying the parent plus repair together
+must guard the current production snapshot/ledger and this exact post-state;
+never use equal before/after expectations for this permission-changing repair.
+
 

@@ -1,4 +1,5 @@
 {
+  "rpcRepairTarget": "public.create_bundle_atomic(uuid, text, text, jsonb, text, boolean, numeric, boolean, text)",
   "mode": "migrations",
   "directory": "supabase/migrations",
   "baseline": "20261022233614_explicit_data_api_grants.sql",
