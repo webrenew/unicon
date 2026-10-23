@@ -3,6 +3,9 @@
 -- This preserves legacy Supabase defaults, rather than declaring least privilege.
 -- Existing RLS still governs row-level DML. TRUNCATE, REFERENCES, TRIGGER and
 -- MAINTAIN are not constrained by RLS. Narrowing is tracked separately in #243.
+-- The same historical privileges are replayed in new environments. Client roles
+-- must remain NOLOGIN; PostgREST exposes no TRUNCATE or MAINTAIN operation.
+-- Preserve this baseline; narrow privileges with a separately reviewed migration.
 grant DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on table "public"."api_sessions" to "anon";
 grant DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on table "public"."api_sessions" to "authenticated";
 grant DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on table "public"."api_sessions" to "service_role";

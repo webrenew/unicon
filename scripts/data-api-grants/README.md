@@ -58,6 +58,8 @@ The guard is a lexical check. The database contract verifies actual access.
 
 None of the original 10 local migration versions matched the 15 production ledger versions. The original files are preserved byte-for-byte in supabase/legacy-migrations and checked as immutable references. They must never be pushed. supabase/migrations now contains the 15 recorded production SQL bodies with their real versions and names. scripts/data-api-grants/applied-history.json records the ledger statement hashes for review; scripts/migration-grants.config.json enforces the immutable source hashes.
 
+Databases initialized from the old ten files need separate handling. For a disposable local database, preserve any needed data first, then explicitly run `supabase db reset` to rebuild from the recovered history. Never replay the fifteen files over an existing schema or delete/repair ledger rows blindly. A persistent staging or preview database needs its own schema/ledger comparison and reviewed reconciliation before the next push; stop on legacy versions rather than applying pending SQL. Production is already on the recovered fifteen-version history.
+
 The ledger also omits later production RPC changes. A guarded recovery migration restores the two exported definitions only when their current definition differs; both production definition guards already match. Named EXECUTE revokes/grants restore the existing service-only restrictions on six RPCs in fresh rebuilds. No production function definition or RPC permission may change when applying the recovery.
 
 The only pending production files are 20261022233613_recover_current_rpc_contract.sql and 20261022233614_explicit_data_api_grants.sql. A dry run must list exactly those files. Full historical replay plus recovery matches all 21 production routines and every relation/policy/access category.
@@ -71,7 +73,8 @@ The only pending production files are 20261022233613_recover_current_rpc_contrac
 4. Apply only that reviewed set, recording exact versions, names and SQL in the
    migration ledger. Never reset production or replay catalog fixtures there.
    Use `transaction.mjs` to build the apply SQL from the fresh snapshot and full
-   ledger. It checks both before any SQL and checks every permission category
+   ledger. It verifies the fresh snapshot against the checked-in reviewed summary,
+   checks the full live snapshot and ledger before any SQL, and checks every permission category
    again before commit. Any drift rolls back the migrations and ledger entries.
    CI executes that transaction and proves an ACL mutation rolls back its ledger
    entry too. Empty ledgers and NULL snapshots must abort before any migration.
@@ -100,7 +103,8 @@ const migrations = [...(config.preBaselineMigrations ?? []), config.baseline].ma
   filename, sql: readFileSync(config.directory + '/' + filename, 'utf8'),
 }))
 process.stdout.write(buildApplyTransaction(readFileSync('scripts/data-api-grants/snapshot.sql', 'utf8'),
-  snapshot, ledger, migrations))
+  snapshot, ledger, migrations,
+  JSON.parse(readFileSync('scripts/data-api-grants/expected-summary.json', 'utf8'))))
 JS
 ```
 
