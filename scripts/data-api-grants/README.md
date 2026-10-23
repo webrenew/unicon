@@ -114,10 +114,15 @@ const migrations = [...(config.preBaselineMigrations ?? []), config.baseline, ..
 process.stdout.write(buildApplyTransaction(readFileSync('scripts/data-api-grants/snapshot.sql', 'utf8'),
   snapshot, ledger, migrations,
   JSON.parse(readFileSync('scripts/data-api-grants/before-rpc-repair-summary.json', 'utf8')),
-  { snapshot: JSON.parse(readFileSync(afterFile, 'utf8')),
+  { snapshot: { ...snapshot, routines: JSON.parse(readFileSync(afterFile, 'utf8')).routines },
     summary: JSON.parse(readFileSync('scripts/data-api-grants/expected-summary.json', 'utf8')) }))
 JS
 ```
+
+The reviewed routine rows come from the verified proof; every other category,
+including defaults, comes from the fresh production before-state. The builder
+rejects changes to those unchanged categories before generating SQL. Never use
+the local October 30 default-ACL simulation as the production post-state.
 
 This prepares SQL only. Submit it only after reviewing the exact file set and
 confirming the correct live project, current commit, ledger and snapshot.
@@ -143,3 +148,8 @@ must guard the current production snapshot/ledger and this exact post-state;
 never use equal before/after expectations for this permission-changing repair.
 
 
+
+Trusted server calls use the service key through PostgREST (which sets ROLE),
+or an explicit SET LOCAL ROLE service_role in a privileged SQL session. The
+reviewed service_role is NOLOGIN; direct service_role login is not a supported
+connection path. Client role-claim text alone cannot select that exemption.

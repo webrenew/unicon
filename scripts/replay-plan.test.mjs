@@ -49,3 +49,14 @@ test('intentional changes require an independently reviewed post-state contract'
   assert.ok(transaction.includes('expected_after jsonb := '))
   assert.ok(transaction.includes('if observed is distinct from expected_after then'))
 })
+
+test('RPC repair post-state must preserve production defaults and table grants', async () => {
+  const sql = await readFile(new URL('./data-api-grants/snapshot.sql', import.meta.url), 'utf8')
+  const before = Object.fromEntries([...categories, 'defaults'].map(name => [name, []]))
+  for (const category of ['defaults', 'relation_acl']) {
+    const after = { ...before, [category]: [{ unreviewed: true }] }
+    assert.throws(() => buildApplyTransaction(sql, before, [{ version: '20260101000000' }],
+      [{ filename: '20261023010000_repair.sql', sql: 'select 1;' }], summarize(before),
+      { snapshot: after, summary: summarize(after) }), /must preserve current production metadata/)
+  }
+})

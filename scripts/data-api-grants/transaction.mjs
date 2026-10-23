@@ -18,6 +18,10 @@ export function buildApplyTransaction(snapshotSql, expected, ledger, migrations,
   assert.deepEqual(Object.keys(expectedAfter).sort(), [...categories, 'defaults'].sort(),
     'A complete reviewed post-state snapshot is required')
   assertSnapshotContract(expectedAfter, reviewedChange?.summary ?? reviewedSummary, 'Reviewed post-state snapshot')
+  for (const category of [...categories, 'defaults'].filter(name => name !== 'routines')) {
+    assert.deepEqual(expectedAfter[category], expected[category],
+      `RPC repair must preserve current production metadata: ${category}`)
+  }
   assert.ok(Array.isArray(ledger) && ledger.length, 'A complete nonempty migration ledger is required')
   assert.ok(Array.isArray(migrations) && migrations.length, 'No reviewed migrations supplied')
   const versions = migrations.map(({ filename }) => {

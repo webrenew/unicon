@@ -128,11 +128,13 @@ function proof() {
     query(config.catalogFixtures.map((file) => readFileSync(join(root, file), 'utf8')).join('\n'))
   }
   const without = capture('without-baseline', false)
-  if (!replay.after.length) {
-    assertSnapshotContract(without, { objects: expected.objects }, join(outputDirectory, 'without-baseline.json'), ['objects'])
-    assert.throws(() => assertReviewedRoleAccess(without, rolePlan), /Reviewed role access differs/,
-      'A fresh database without the baseline must lose the recorded API access')
-  }
+  const beforeSummary = JSON.parse(readFileSync(join(root, 'scripts/data-api-grants/before-rpc-repair-summary.json'), 'utf8'))
+  assertSnapshotContract(without, { objects: beforeSummary.objects },
+    join(outputDirectory, 'without-baseline.json'), ['objects'])
+  const beforeRolePlan = Object.fromEntries(Object.entries(rolePlan)
+    .filter(([name]) => without.objects.some(object => object.name === name)))
+  assert.throws(() => assertReviewedRoleAccess(without, beforeRolePlan), /Reviewed role access differs/,
+    'A fresh database without the baseline must lose the recorded API access')
   const baselineFile = config.baselineFile ?? join(config.directory, config.baseline)
   const artifact = readFileSync(join(root, baselineFile), 'utf8')
   assert.ok(without.effective_relations.some((row) => row.role === 'service_role'

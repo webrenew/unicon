@@ -8,6 +8,10 @@ update public.subscriptions set plan='pro'
 
 set local role anon;
 do $$ begin
+  if has_function_privilege('anon', 'public.create_bundle_atomic(uuid,text,text,jsonb,text,boolean,numeric,boolean,text)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.validate_api_token(text)', 'EXECUTE') then
+    raise exception 'Anonymous EXECUTE must be revoked independently of the owner guard';
+  end if;
   begin
     perform public.create_bundle_atomic('11111111-1111-1111-1111-111111111111','anonymous');
     raise exception 'Anonymous bundle creation unexpectedly succeeded';
