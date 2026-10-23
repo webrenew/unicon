@@ -1,10 +1,12 @@
 -- Recover RPC definitions and EXECUTE ACLs already present in production.
 -- SQL was generated from the 2026-10-22 production catalog.
+-- Definition-rendering hashes are pinned to PostgreSQL 17; review them on upgrade.
 -- Every production definition matches its guard, so no production function is replaced.
 -- Fresh historical replays recover the same restrictions and authorization behavior.
 do $rpc_recovery$
 begin
   if md5(pg_get_functiondef(to_regprocedure('public.validate_api_token(text)'))) is distinct from 'cb0db74839c1ca6bf47ddb1aa99b3a59' then
+    raise notice 'Restoring public.validate_api_token from the reviewed PostgreSQL 17 catalog definition';
 CREATE OR REPLACE FUNCTION public.validate_api_token(p_access_token text)
  RETURNS TABLE(valid boolean, user_id uuid, scope text, is_pro boolean, error text)
  LANGUAGE plpgsql
@@ -58,6 +60,7 @@ $rpc_recovery$;
 do $rpc_recovery$
 begin
   if md5(pg_get_functiondef(to_regprocedure('public.authorize_device_code(text,uuid)'))) is distinct from 'f1210bb9b8791d39197c0cad14ecc0b0' then
+    raise notice 'Restoring public.authorize_device_code from the reviewed PostgreSQL 17 catalog definition';
 CREATE OR REPLACE FUNCTION public.authorize_device_code(p_user_code text, p_user_id uuid)
  RETURNS TABLE(success boolean, client_name text, scope text, error text)
  LANGUAGE plpgsql
