@@ -62,55 +62,99 @@ Databases initialized from the old ten files need separate handling. For a dispo
 
 The ledger also omits later production RPC changes. A guarded recovery migration restores the two exported definitions only when their current definition differs; both production definition guards already match. Named EXECUTE revokes/grants restore the existing service-only restrictions on six RPCs in fresh rebuilds. No production function definition or RPC permission may change when applying the recovery.
 
-The only pending production files are 20261022233613_recover_current_rpc_contract.sql and 20261022233614_explicit_data_api_grants.sql. A dry run must list exactly those files. Full historical replay plus recovery matches all 21 production routines and every relation/policy/access category.
+The pending production files are 20261022233613_recover_current_rpc_contract.sql, 20261022233614_explicit_data_api_grants.sql, then 20261023010000_secure_bundle_rpc.sql. A dry run must list exactly those three files. Full historical replay plus recovery matches all 21 production routines and every relation/policy/access category.
 
 ## Production procedure
 
-1. Review the PR, exact SQL, history manifest and successful database proof.
-2. Refresh main, the complete live ledger and the production snapshot. Stop if
-   any current permission or source definition differs from the reviewed state.
-3. Confirm that the pending set contains exactly the files documented above.
-4. Apply only that reviewed set, recording exact versions, names and SQL in the
-   migration ledger. Never reset production or replay catalog fixtures there.
-   Use `transaction.mjs` to build the apply SQL from the fresh snapshot and full
-   ledger. It verifies the fresh snapshot against the checked-in reviewed summary,
-   checks the full live snapshot and ledger before any SQL, and checks every permission category
-   again before commit. Any drift rolls back the migrations and ledger entries.
-   CI executes that transaction and proves an ACL mutation rolls back its ledger
-   entry too. Empty ledgers and NULL snapshots must abort before any migration.
-5. Compare complete sorted tuples before and after. Only the ledger may change.
-6. Merge only after reviewer approval and green CI, then verify the production
+The owner approved the specific RPC authorization repair after review and CI.
+Table grants, RLS, policies, views, defaults and unrelated routine definitions
+must remain unchanged. The exact pending set is the recovery files (if any),
+the baseline, then `reviewedChangeMigrations` from the checked-in configuration.
+Never replay historical or catalog-fixture SQL on production.
+
+1. Obtain independent approval and green required CI on the exact PR head.
+2. Refresh the live project identity, complete ledger and permission snapshot.
+   Require conformance to `before-rpc-repair-summary.json`, not the post-state.
+3. Confirm that the pending set contains exactly the configured reviewed files.
+4. Build the guarded transaction below using the fresh full snapshot/ledger and
+   the independently reviewed post-state. Both states must match their checked-in
+   summaries. Only the named RPC changes may differ; defaults and table ACLs
+   must be identical. The transaction records the exact source/version/name of
+   every pending file and rolls back all SQL/ledger writes on a mismatch.
+5. Compare fresh complete tuples after application. Accept only the named RPC
+   changes; verify every old ledger row and exact newly recorded source.
+6. Merge only after review and required CI, then verify the matching production
    deployment and representative application reads.
+
+The database proof executes this intentional transition and proves that an extra
+anonymous EXECUTE grant rolls back the repair and its ledger entry. Empty ledgers
+and NULL snapshots also abort before SQL. The builder defaults to a no-op
+permission transition only when no reviewed post-state is supplied.
 
 Use inspect.mjs summary/grants/compare with private snapshot files. Raw catalogs
 and database credentials belong outside Git. Do not refresh expected digests to
 make unexplained differences pass.
 
-For a runnable build command, save the fresh snapshot and a JSON array of full
-ledger rows outside Git, then run from the repository root:
+For a runnable build command, save the fresh snapshot, a JSON array of full
+ledger rows and the independently reviewed post-state outside Git, then run from the repository root:
 
 ```sh
 umask 077
-node --input-type=module - /private/tmp/before.json /private/tmp/ledger.json > /private/tmp/reviewed-apply.sql <<'JS'
+node --input-type=module - /private/tmp/before.json /private/tmp/ledger.json /private/tmp/reviewed-after.json > /private/tmp/reviewed-apply.sql <<'JS'
 import { readFileSync } from 'node:fs'
 import { buildApplyTransaction } from './scripts/data-api-grants/transaction.mjs'
-const [snapshotFile, ledgerFile] = process.argv.slice(2)
+const [snapshotFile, ledgerFile, afterFile] = process.argv.slice(2)
 const raw = JSON.parse(readFileSync(snapshotFile, 'utf8'))
 const snapshot = raw.rows?.[0]?.snapshot ?? raw.snapshot ?? raw
 const ledger = JSON.parse(readFileSync(ledgerFile, 'utf8'))
 const config = JSON.parse(readFileSync('scripts/migration-grants.config.json', 'utf8'))
-const migrations = [...(config.preBaselineMigrations ?? []), config.baseline].map(filename => ({
+const migrations = [...(config.preBaselineMigrations ?? []), config.baseline, ...config.reviewedChangeMigrations].map(filename => ({
   filename, sql: readFileSync(config.directory + '/' + filename, 'utf8'),
 }))
 process.stdout.write(buildApplyTransaction(readFileSync('scripts/data-api-grants/snapshot.sql', 'utf8'),
   snapshot, ledger, migrations,
-  JSON.parse(readFileSync('scripts/data-api-grants/expected-summary.json', 'utf8'))))
+  JSON.parse(readFileSync('scripts/data-api-grants/before-rpc-repair-summary.json', 'utf8')),
+  { snapshot: { ...snapshot, routines: JSON.parse(readFileSync(afterFile, 'utf8')).routines },
+    summary: JSON.parse(readFileSync('scripts/data-api-grants/expected-summary.json', 'utf8')) }))
 JS
 ```
+
+The reviewed routine rows come from the verified proof; every other category,
+including defaults, comes from the fresh production before-state. The builder
+rejects changes to those unchanged categories before generating SQL. Never use
+the local October 30 default-ACL simulation as the production post-state.
 
 This prepares SQL only. Submit it only after reviewing the exact file set and
 confirming the correct live project, current commit, ledger and snapshot.
 Later migrations always replay after the baseline in CI, including catalog-fixture
 proofs; the baseline is never reapplied over a later intentional privilege change.
 
+## Proposed RPC authorization repair
 
+This rollout includes `20261023010000_secure_bundle_rpc.sql` for #243.
+It revokes anonymous bundle creation, binds authenticated callers to their own
+user ID, and restricts token validation to the server's service role. The existing
+web session and trusted MCP paths remain supported. Table grants stay unchanged.
+The owner approved this specific permission change after review and CI.
+The three-file apply order is RPC recovery, grants baseline, then this repair.
+
+The builder accepts a sixth argument `{ snapshot, summary }` for an independently
+reviewed post-state. Both states must have complete snapshots and matching pinned
+summaries. `before-rpc-repair-summary.json` pins the parent baseline, while
+`expected-summary.json` pins the repair. The database proof checks the intended
+transition, actual caller authorization, and complete rollback when an extra
+anonymous EXECUTE grant is injected. Applying the parent plus repair together
+must guard the current production snapshot/ledger and this exact post-state;
+never use equal before/after expectations for this permission-changing repair.
+
+
+
+Trusted server calls use the service key through PostgREST (which sets ROLE),
+or an explicit SET LOCAL ROLE service_role in a privileged SQL session. The
+reviewed service_role is NOLOGIN; direct service_role login is not a supported
+connection path. Client role-claim text alone cannot select that exemption.
+
+The proof pins the repair checkpoint separately in rpc-repair-summary.json.
+Future table/index migrations run after that checkpoint and use the final
+expected-summary.json and role/security contracts. They do not get folded into
+the RPC-only transaction or require rewriting the applied repair checkpoint.

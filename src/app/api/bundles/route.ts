@@ -82,6 +82,9 @@ export async function POST(request: Request) {
     });
 
     if (error) {
+      if (error.code === "42501") {
+        return NextResponse.json({ error: "Permission denied" }, { status: 403 });
+      }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 

@@ -11,7 +11,7 @@ import { assertSecurityPosture } from './data-api-grants/security-posture.mjs'
 import { assertReviewedRoleAccess } from './data-api-grants/role-access.mjs'
 import { assertRoutineAccess } from './data-api-grants/routine-access.mjs'
 import { buildApplyTransaction } from './data-api-grants/transaction.mjs'
-import { replayPlan } from './data-api-grants/replay-plan.mjs'
+import { replayPlan, repairStages } from './data-api-grants/replay-plan.mjs'
 import { auditMigrationGrants } from './check-migration-grants.mjs'
 import { assertSnapshotContract, parseProofArguments, proofDirectory,
   proofUsage, snapshotQueryBody, stopProofDatabase, writeProofSnapshot } from './data-api-grants/proof-support.mjs'
@@ -128,11 +128,13 @@ function proof() {
     query(config.catalogFixtures.map((file) => readFileSync(join(root, file), 'utf8')).join('\n'))
   }
   const without = capture('without-baseline', false)
-  if (!replay.after.length) {
-    assertSnapshotContract(without, { objects: expected.objects }, join(outputDirectory, 'without-baseline.json'), ['objects'])
-    assert.throws(() => assertReviewedRoleAccess(without, rolePlan), /Reviewed role access differs/,
-      'A fresh database without the baseline must lose the recorded API access')
-  }
+  const beforeSummary = JSON.parse(readFileSync(join(root, 'scripts/data-api-grants/before-rpc-repair-summary.json'), 'utf8'))
+  assertSnapshotContract(without, { objects: beforeSummary.objects },
+    join(outputDirectory, 'without-baseline.json'), ['objects'])
+  const beforeRolePlan = Object.fromEntries(Object.entries(rolePlan)
+    .filter(([name]) => without.objects.some(object => object.name === name)))
+  assert.throws(() => assertReviewedRoleAccess(without, beforeRolePlan), /Reviewed role access differs/,
+    'A fresh database without the baseline must lose the recorded API access')
   const baselineFile = config.baselineFile ?? join(config.directory, config.baseline)
   const artifact = readFileSync(join(root, baselineFile), 'utf8')
   assert.ok(without.effective_relations.some((row) => row.role === 'service_role'
@@ -151,10 +153,14 @@ function proof() {
     const restored = securityFixture(`missing-rpc-recovered-${index}`, `drop function ${signature};\n${recovery}`)
     assert.deepEqual(compareSnapshots(initial, restored), [], 'Missing RPC recovery must restore the original contract')
   }
-  for (const name of replay.after) query(readFileSync(join(root, config.directory, name), 'utf8'))
+  const stages = repairStages(replay.after, config.reviewedChangeMigrations)
+  const repairedSummary = JSON.parse(readFileSync(join(root, 'scripts/data-api-grants/rpc-repair-summary.json'), 'utf8'))
+  verifyReviewedRpcRepair(stages.repair, initial, beforeSummary, repairedSummary)
+  for (const name of stages.later) query(readFileSync(join(root, config.directory, name), 'utf8'))
   const withBaseline = capture('with-baseline')
   assertReviewedRoleAccess(withBaseline, rolePlan)
   assertSnapshotContract(withBaseline, expected, join(outputDirectory, 'with-baseline.json'))
+  query(readFileSync(join(root, 'scripts/data-api-grants/rpc-ownership-fixture.sql'), 'utf8'))
   if (withBaseline.objects.some((row) => row.kind === 'S')) {
     assert.deepEqual([...new Set(withBaseline.effective_relations.filter((row) => row.kind === 'S')
       .map((row) => row.privilege))].sort(), ['SELECT', 'UPDATE', 'USAGE'],
@@ -172,6 +178,29 @@ function proof() {
   verifySentinels()
   verifySecurityControls(withBaseline, security, securityFixture)
   assert.deepEqual(compareSnapshots(withBaseline, capture('after-fixtures')), [], 'Fixture and sentinel checks must roll back')
+}
+
+function verifyReviewedRpcRepair(files, before, beforeSummary, expected) {
+  assertSnapshotContract(before, beforeSummary, 'before-rpc-repair')
+  const migrations = files.map(filename => ({ filename,
+    sql: readFileSync(join(root, config.directory, filename), 'utf8') }))
+  assert.deepEqual(files, config.reviewedChangeMigrations,
+    'Review the exact transition before changing the pending permission migrations')
+  const after = securityFixture('reviewed-rpc-repair', migrations.map(row => row.sql).join('\n'))
+  assertSnapshotContract(after, expected, 'reviewed-rpc-repair')
+  const historySql = 'select jsonb_agg(to_jsonb(m) order by version) from supabase_migrations.schema_migrations m;'
+  const ledger = JSON.parse(query(historySql))
+  const unreviewed = migrations.map(row => ({ ...row,
+    sql: row.sql + '\ngrant execute on function ' + config.rpcRepairTarget + ' to anon;' }))
+  assert.throws(() => query(buildApplyTransaction(snapshotSql, before, ledger, unreviewed,
+    beforeSummary, { snapshot: after, summary: expected })), /Permission contract drift after migration/)
+  assert.deepEqual(JSON.parse(query(historySql)), ledger, 'Failed repair must roll back its ledger entry')
+  assert.deepEqual(compareSnapshots(before, capture('after-repair-rollback', false)), [],
+    'An unreviewed RPC grant must roll back the entire repair')
+  query(buildApplyTransaction(snapshotSql, before, ledger, migrations,
+    beforeSummary, { snapshot: after, summary: expected }))
+  assert.deepEqual(compareSnapshots(after, capture('after-reviewed-repair', false)), [],
+    'Approved transition must reach exactly the reviewed post-state')
 }
 
 function verifyAtomicApplication(expected) {
