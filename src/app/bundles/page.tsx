@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 import { BundlesList } from "@/components/bundles/bundles-list";
 import { getUser } from "@/lib/auth/actions";
@@ -22,10 +23,26 @@ export default async function BundlesPage() {
     .from("bundles")
     .select(BUNDLE_SUMMARY_SELECT)
     .eq("user_id", user.profile.id)
-    .order("created_at", { ascending: false });
+    .order("updated_at", { ascending: false });
 
   if (bundlesError) {
-    throw bundlesError;
+    return (
+      <div className="min-h-screen flex flex-col">
+        <SiteHeader />
+        <div className="flex-1 flex flex-col items-center justify-center px-4 py-20 text-center">
+          <h1 className="text-xl font-medium text-foreground">Unable to load bundles</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Your bundles could not be retrieved. Please try again.
+          </p>
+          <Link
+            href="/bundles"
+            className="mt-4 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Try again
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (
