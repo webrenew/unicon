@@ -64,8 +64,7 @@ describe("POST /api/stripe/checkout", () => {
   const loggerErrorMock = vi.mocked(logger.error);
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    checkoutSessionExpireMock.mockReset();
+    vi.resetAllMocks();
   });
 
   it("returns 400 when authenticated user has no email", async () => {
@@ -154,6 +153,34 @@ describe("POST /api/stripe/checkout", () => {
       sessionId: "cs_filtered",
       error: expireError,
     });
+  });
+
+  it("expires a card-less session without changing the controlled 500 response", async () => {
+    mockAuthenticatedUser({
+      user: {
+        id: "user_2",
+        email: "pro@example.com",
+        user_metadata: { full_name: "Expired Session User" },
+      },
+      subscription: null,
+    });
+
+    createOrRetrieveCustomerMock.mockResolvedValue("cus_test_123");
+    checkoutSessionCreateMock.mockResolvedValue({
+      id: "cs_expired",
+      payment_method_types: [],
+      url: "https://checkout.stripe.com/c/expired",
+    } as never);
+    checkoutSessionExpireMock.mockResolvedValue({ id: "cs_expired" } as never);
+
+    const response = await POST();
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Failed to create checkout session",
+    });
+    expect(checkoutSessionExpireMock).toHaveBeenCalledWith("cs_expired");
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it("returns controlled 500 response when Stripe checkout call fails", async () => {
