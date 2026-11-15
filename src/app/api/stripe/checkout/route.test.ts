@@ -125,9 +125,17 @@ describe("POST /api/stripe/checkout", () => {
   });
 
   it.each([
-    { outcome: "succeeds", expireError: null },
-    { outcome: "fails", expireError: new Error("Session is already expired") },
-  ])("expires a card-less session when cleanup $outcome", async ({ expireError }) => {
+    { outcome: "succeeds", expireError: null, paymentMethodTypes: [] },
+    {
+      outcome: "fails",
+      expireError: new Error("Session is already expired"),
+      paymentMethodTypes: [],
+    },
+    { outcome: "succeeds", expireError: null, paymentMethodTypes: ["link"] },
+  ])("expires a card-less session when cleanup $outcome", async ({
+    expireError,
+    paymentMethodTypes,
+  }) => {
     mockAuthenticatedUser({
       user: {
         id: "user_2",
@@ -140,7 +148,7 @@ describe("POST /api/stripe/checkout", () => {
     createOrRetrieveCustomerMock.mockResolvedValue("cus_test_123");
     checkoutSessionCreateMock.mockResolvedValue({
       id: "cs_filtered",
-      payment_method_types: [],
+      payment_method_types: paymentMethodTypes,
       url: "https://checkout.stripe.com/c/filtered",
     } as never);
 
@@ -158,7 +166,7 @@ describe("POST /api/stripe/checkout", () => {
     });
     expect(loggerErrorMock).toHaveBeenCalledWith("Stripe checkout session rejected card", {
       sessionId: "cs_filtered",
-      paymentMethodTypes: [],
+      paymentMethodTypes,
     });
     expect(loggerErrorMock).not.toHaveBeenCalledWith("Stripe checkout error:", expect.anything());
     expect(checkoutSessionExpireMock).toHaveBeenCalledWith("cs_filtered");
