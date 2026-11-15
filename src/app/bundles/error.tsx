@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 export default function BundlesError({
   error,
   reset,
@@ -22,6 +24,12 @@ export default function BundlesError({
       >
         Try again
       </button>
+      <Link
+        href="/"
+        className="mt-3 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Back to icons
+      </Link>
     </div>
   );
 }
