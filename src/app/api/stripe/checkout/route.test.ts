@@ -95,6 +95,8 @@ describe("POST /api/stripe/checkout", () => {
 
     createOrRetrieveCustomerMock.mockResolvedValue("cus_test_123");
     checkoutSessionCreateMock.mockResolvedValue({
+      id: "cs_test",
+      payment_method_types: ["card"],
       url: "https://checkout.stripe.com/c/pay_test",
     } as never);
 
@@ -112,6 +114,37 @@ describe("POST /api/stripe/checkout", () => {
       })
     );
     expect(checkoutSessionCreateMock.mock.calls[0]?.[0]).not.toHaveProperty("payment_method_types");
+  });
+
+  it("returns controlled 500 response when Stripe filters card out of the session", async () => {
+    mockAuthenticatedUser({
+      user: {
+        id: "user_2",
+        email: "pro@example.com",
+        user_metadata: { full_name: "Filtered Card User" },
+      },
+      subscription: null,
+    });
+
+    createOrRetrieveCustomerMock.mockResolvedValue("cus_test_123");
+    checkoutSessionCreateMock.mockResolvedValue({
+      id: "cs_filtered",
+      payment_method_types: [],
+      url: "https://checkout.stripe.com/c/filtered",
+    } as never);
+
+    const response = await POST();
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Failed to create checkout session",
+    });
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      "Stripe checkout error:",
+      expect.objectContaining({
+        message: "Stripe checkout session cs_filtered does not offer card payments",
+      })
+    );
   });
 
   it("returns controlled 500 response when Stripe checkout call fails", async () => {

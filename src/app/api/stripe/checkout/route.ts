@@ -61,6 +61,10 @@ export async function POST() {
       },
     });
 
+    if (!session.payment_method_types.includes("card")) {
+      throw new Error(`Stripe checkout session ${session.id} does not offer card payments`);
+    }
+
     return NextResponse.json({ url: session.url });
   } catch (err) {
     logger.error("Stripe checkout error:", err);
