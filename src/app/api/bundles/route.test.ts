@@ -127,6 +127,34 @@ describe("POST /api/bundles", () => {
     await expect(response.json()).resolves.toEqual({ error: "Permission denied" });
   });
 
+  it("returns 409 when the account bundle cap is reached", async () => {
+    const supabase: MockSupabaseClient = {
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: "user-1" } },
+          error: null,
+        }),
+      },
+      rpc: vi.fn().mockResolvedValue({
+        data: [{ success: false, error: "Bundle limit reached (250 per account)" }],
+        error: null,
+      }),
+    };
+    createClientMock.mockResolvedValue(supabase as unknown as Awaited<ReturnType<typeof createClient>>);
+
+    const response = await POST(
+      new Request("https://example.com/api/bundles", {
+        method: "POST",
+        body: JSON.stringify({ name: "over-cap", icons: [] }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Bundle limit reached (250 per account)",
+    });
+  });
+
   it("returns 429 when bundle creation exceeds the authenticated rate limit", async () => {
     checkRateLimitMock.mockResolvedValue({
       success: false,

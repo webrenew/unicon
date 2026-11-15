@@ -58,6 +58,12 @@ do $$ declare result record; begin
     '11111111-1111-1111-1111-111111111111','over-cap');
   if result.success is distinct from false then raise exception 'Bundle cap not enforced'; end if;
   begin
+    insert into public.bundles(user_id,name,icons)
+    values('11111111-1111-1111-1111-111111111111','direct-over-cap','[]'::jsonb);
+    raise exception 'Direct bundle cap bypassed';
+  exception when raise_exception then null;
+  end;
+  begin
     perform public.validate_api_token('uni_local_fixture_invalid');
     raise exception 'Authenticated token validation unexpectedly succeeded';
   exception when insufficient_privilege then null;

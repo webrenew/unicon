@@ -85,6 +85,45 @@ $$;
 REVOKE ALL ON FUNCTION public.can_create_bundle(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.can_create_bundle(uuid) TO service_role;
 
+CREATE OR REPLACE FUNCTION public.enforce_bundle_limit()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  v_owner_id UUID;
+  v_bundle_count INTEGER;
+BEGIN
+  SELECT id INTO v_owner_id
+  FROM public.profiles
+  WHERE id = NEW.user_id
+  FOR UPDATE;
+
+  IF v_owner_id IS NULL THEN
+    RAISE EXCEPTION 'Bundle owner must exist' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT COUNT(*)::INTEGER INTO v_bundle_count
+  FROM public.bundles
+  WHERE user_id = NEW.user_id;
+
+  IF v_bundle_count >= 250 THEN
+    RAISE EXCEPTION 'Bundle limit reached (250 per account)';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.enforce_bundle_limit() FROM PUBLIC, anon, authenticated, service_role;
+
+DROP TRIGGER IF EXISTS enforce_bundle_limit ON public.bundles;
+CREATE TRIGGER enforce_bundle_limit
+BEFORE INSERT ON public.bundles
+FOR EACH ROW
+EXECUTE FUNCTION public.enforce_bundle_limit();
+
 CREATE OR REPLACE FUNCTION public.create_api_token_direct(
   p_user_id UUID,
   p_name TEXT DEFAULT NULL,

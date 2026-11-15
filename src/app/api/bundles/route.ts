@@ -18,7 +18,7 @@ export async function GET() {
 
     const { data: bundles, error } = await supabase
       .from("bundles")
-      .select("*")
+      .select("id, user_id, name, description, is_public, share_slug, stroke_preset, normalize_strokes, target_stroke_width, normalize_viewbox, target_viewbox, icon_count, created_at, updated_at")
       .eq("user_id", user.id)
       .order("updated_at", { ascending: false });
 
@@ -109,9 +109,10 @@ export async function POST(request: Request) {
     const result = data?.[0];
 
     if (!result?.success) {
+      const message = result?.error ?? "Failed to create bundle";
       return NextResponse.json(
-        { error: result?.error ?? "Failed to create bundle" },
-        { status: 403 }
+        { error: message },
+        { status: message.startsWith("Bundle limit reached") ? 409 : 403 }
       );
     }
 

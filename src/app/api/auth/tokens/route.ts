@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
+import { checkRateLimit, getRateLimitHeaders } from "@/lib/rate-limit";
 
 /**
  * GET /api/auth/tokens — List active API tokens for the current user
@@ -44,6 +45,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const rateLimit = await checkRateLimit(user.id);
+  if (!rateLimit.success) {
+    return NextResponse.json(
+      { error: "rate_limit_exceeded", message: "Rate limit exceeded. Please wait before creating more tokens." },
+      { status: 429, headers: getRateLimitHeaders(rateLimit) }
+    );
+  }
+
   let body: Record<string, unknown> = {};
   try {
     body = await request.json();
@@ -66,13 +75,6 @@ export async function POST(request: Request) {
   }
 
   const result = data as unknown as Record<string, unknown>;
-
-  if (result.error) {
-    return NextResponse.json(
-      { error: result.error as string },
-      { status: 403 }
-    );
-  }
 
   return NextResponse.json(
     {
