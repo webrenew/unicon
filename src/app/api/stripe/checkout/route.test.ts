@@ -62,6 +62,7 @@ describe("POST /api/stripe/checkout", () => {
   const checkoutSessionCreateMock = vi.mocked(stripe.checkout.sessions.create);
   const checkoutSessionExpireMock = vi.mocked(stripe.checkout.sessions.expire);
   const loggerErrorMock = vi.mocked(logger.error);
+  const loggerWarnMock = vi.mocked(logger.warn);
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -132,7 +133,7 @@ describe("POST /api/stripe/checkout", () => {
       paymentMethodTypes: [],
     },
     { outcome: "succeeds", expireError: null, paymentMethodTypes: ["link"] },
-  ])("expires a card-less session when cleanup $outcome", async ({
+  ])("expires a card-less session with $paymentMethodTypes when cleanup $outcome", async ({
     expireError,
     paymentMethodTypes,
   }) => {
@@ -171,12 +172,12 @@ describe("POST /api/stripe/checkout", () => {
     expect(loggerErrorMock).not.toHaveBeenCalledWith("Stripe checkout error:", expect.anything());
     expect(checkoutSessionExpireMock).toHaveBeenCalledWith("cs_filtered");
     if (expireError) {
-      expect(logger.warn).toHaveBeenCalledWith("Failed to expire rejected Stripe checkout session", {
+      expect(loggerWarnMock).toHaveBeenCalledWith("Failed to expire rejected Stripe checkout session", {
         sessionId: "cs_filtered",
         error: expireError,
       });
     } else {
-      expect(logger.warn).not.toHaveBeenCalled();
+      expect(loggerWarnMock).not.toHaveBeenCalled();
     }
   });
 
