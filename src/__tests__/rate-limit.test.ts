@@ -85,15 +85,7 @@ describe("rate-limit helpers", () => {
       status: "degraded",
     });
 
-    await expect(checkRateLimit("user_free", false)).resolves.toMatchObject({
-      success: false,
-      limit: 10,
-      remaining: 0,
-      policy: "fail-closed",
-      status: "degraded",
-    });
-
-    await expect(checkRateLimit("user_pro", true)).resolves.toMatchObject({
+    await expect(checkRateLimit("user_free")).resolves.toMatchObject({
       success: false,
       limit: 100,
       remaining: 0,

@@ -1,7 +1,7 @@
 /**
  * GET /api/bundles/me
  * 
- * List all bundles for the authenticated Pro user (via API token).
+ * List all bundles for the authenticated user (via API token).
  * Used by MCP, CLI, and Figma plugin to fetch user's saved bundles.
  */
 
@@ -34,8 +34,7 @@ export async function GET(request: Request) {
       throw error;
     }
 
-    // Check rate limit (different limits for free vs Pro)
-    const rateLimit = await checkRateLimit(authContext.userId, authContext.isPro);
+    const rateLimit = await checkRateLimit(authContext.userId);
     
     if (!rateLimit.success) {
       return NextResponse.json(

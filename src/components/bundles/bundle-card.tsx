@@ -15,12 +15,11 @@ import type { Bundle, BundleIcon } from "@/types/database";
 
 interface BundleCardProps {
   bundle: Bundle;
-  isPro: boolean;
   onDelete: (id: string) => void;
   onTogglePublic: (id: string, isPublic: boolean, updatedBundle?: Bundle) => void;
 }
 
-export function BundleCard({ bundle, isPro, onDelete, onTogglePublic }: BundleCardProps) {
+export function BundleCard({ bundle, onDelete, onTogglePublic }: BundleCardProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isTogglingPublic, setIsTogglingPublic] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -47,11 +46,6 @@ export function BundleCard({ bundle, isPro, onDelete, onTogglePublic }: BundleCa
   };
 
   const handleTogglePublic = async () => {
-    if (!isPro && !bundle.is_public) {
-      toast.error("Upgrade to Pro to share bundles publicly");
-      return;
-    }
-
     setIsTogglingPublic(true);
     try {
       const response = await fetch(`/api/bundles/${bundle.id}`, {

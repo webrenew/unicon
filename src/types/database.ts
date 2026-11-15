@@ -1,25 +1,9 @@
-export type SubscriptionStatus = "active" | "canceled" | "past_due";
-export type SubscriptionPlan = "free" | "pro";
-
 export interface Profile {
   id: string;
   email: string | null;
   full_name: string | null;
   avatar_url: string | null;
   created_at: string;
-}
-
-export interface Subscription {
-  id: string;
-  user_id: string;
-  status: SubscriptionStatus;
-  plan: SubscriptionPlan;
-  provider: string | null;
-  provider_subscription_id: string | null;
-  provider_customer_id: string | null;
-  current_period_end: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
 export interface Bundle {
@@ -52,10 +36,8 @@ export interface BundleIcon {
   defaultStroke?: boolean;
 }
 
-export interface UserWithSubscription {
+export interface UserWithProfile {
   profile: Profile;
-  subscription: Subscription;
-  isPro: boolean;
 }
 
 // Teams

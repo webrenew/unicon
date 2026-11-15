@@ -8,7 +8,7 @@ Model Context Protocol (MCP) server for the Unicon icon library. Connects AI ass
 - 🎨 **Multiple Formats**: Get icons as React, Vue, Svelte, SVG, or JSON
 - 📦 **9 Icon Libraries**: Lucide, Phosphor, Hugeicons, Heroicons, Tabler, Feather, Remix, Simple Icons, Iconoir
 - ⚡ **Fast**: Hosted API with local MCP bridge for optimal performance
-- 🔐 **Pro: Access Your Bundles**: Authenticate to use your saved icon bundles
+- 🔐 **Saved Bundles**: Authenticate to access your saved icon bundles for free
 
 ## Installation
 
@@ -150,9 +150,9 @@ Get total icon count and per-library statistics.
 
 List available starter packs with their icons.
 
-## Authentication (Pro Feature)
+## Authentication
 
-Pro subscribers can access their saved bundles via the MCP server. This requires authentication.
+Every user can create an API token for free to access their saved bundles via the MCP server.
 
 ### Step 1: Login via CLI
 

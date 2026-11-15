@@ -4,9 +4,7 @@
  * Get a specific bundle with full icon data for the authenticated user.
  * Used by MCP, CLI, and Figma plugin to fetch bundle contents.
  * 
- * Rate limits:
- * - Free users: 10 requests/minute
- * - Pro users: 100 requests/minute
+ * Rate limit: 100 requests/minute per authenticated user
  */
 
 import { NextResponse } from "next/server";
@@ -101,16 +99,13 @@ export async function GET(request: Request, { params }: RouteParams) {
       );
     }
 
-    // Check rate limit (different limits for free vs Pro)
-    const rateLimit = await checkRateLimit(validation.userId!, validation.isPro ?? false);
+    const rateLimit = await checkRateLimit(validation.userId!);
     
     if (!rateLimit.success) {
       return NextResponse.json(
         { 
           error: "rate_limit_exceeded", 
-          message: validation.isPro 
-            ? "Rate limit exceeded. Please wait before making more requests."
-            : "Rate limit exceeded. Upgrade to Pro for higher limits: https://unicon.sh/pricing"
+          message: "Rate limit exceeded. Please wait before making more requests."
         },
         { 
           status: 429,

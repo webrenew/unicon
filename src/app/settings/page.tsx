@@ -1,10 +1,7 @@
 import { redirect } from "next/navigation";
 import Image from "next/image";
-import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 import { getUser } from "@/lib/auth/actions";
-import { CrownIcon } from "@/components/icons/ui/crown";
-import { ManageSubscriptionButton } from "./manage-subscription-button";
 import { TeamSettings } from "@/components/settings/team-settings";
 import { ApiTokenSettings } from "@/components/settings/api-token-settings";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -22,7 +19,7 @@ export default async function SettingsPage() {
     redirect("/?login=required");
   }
 
-  const { profile, subscription, isPro } = user;
+  const { profile } = user;
   const displayName = profile.full_name ?? profile.email ?? "User";
   const memberSince = profile.created_at
     ? new Date(profile.created_at).toLocaleDateString("en-US", {
@@ -31,18 +28,10 @@ export default async function SettingsPage() {
       })
     : null;
 
-  const renewalDate = subscription.current_period_end
-    ? new Date(subscription.current_period_end).toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      })
-    : null;
-
-  // Fetch team data for Pro users
+  // Fetch team data and API sessions
   let teamData: TeamWithMembers | null = null;
   let tokenSessions: ApiSession[] = [];
-  if (isPro) {
+  {
     const admin = createAdminClient();
 
     // Fetch team membership and API sessions in parallel
@@ -151,54 +140,8 @@ export default async function SettingsPage() {
             </p>
           </div>
 
-          {/* Subscription card */}
-          <div className="p-5 rounded-xl border border-black/5 dark:border-white/5 bg-white/50 dark:bg-white/[0.02]">
-            <h2 className="text-sm font-medium text-muted-foreground mb-4">
-              Subscription
-            </h2>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {isPro ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-gradient-to-r from-amber-400/20 to-orange-500/20 text-amber-600 dark:text-amber-400">
-                    <CrownIcon className="w-3 h-3" />
-                    Pro
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-black/5 dark:bg-white/5 text-muted-foreground">
-                    Free
-                  </span>
-                )}
-                {isPro && renewalDate && (
-                  <span className="text-sm text-muted-foreground">
-                    Renews {renewalDate}
-                  </span>
-                )}
-              </div>
-              {isPro ? (
-                <div className="flex items-center gap-2">
-                  <ManageSubscriptionButton />
-                  <ManageSubscriptionButton variant="downgrade" />
-                </div>
-              ) : (
-                <Link
-                  href="/pricing"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-black dark:bg-white text-white dark:text-black hover:opacity-90 transition-opacity"
-                >
-                  Upgrade to Pro
-                </Link>
-              )}
-            </div>
-          </div>
-
-          {/* API Tokens card (Pro users only) */}
-          {isPro && (
-            <ApiTokenSettings initialSessions={tokenSessions} />
-          )}
-
-          {/* Team card (Pro users only) */}
-          {isPro && (
-            <TeamSettings initialTeam={teamData} userId={profile.id} />
-          )}
+          <ApiTokenSettings initialSessions={tokenSessions} />
+          <TeamSettings initialTeam={teamData} userId={profile.id} />
         </div>
       </div>
     </div>

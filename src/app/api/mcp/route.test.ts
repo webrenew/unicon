@@ -88,11 +88,10 @@ describe("POST /api/mcp auth policy", () => {
     );
   });
 
-  it("does not register bundle tools for valid non-Pro API tokens", async () => {
+  it("registers bundle tools for valid API tokens without a Pro subscription", async () => {
     validateApiTokenMock.mockResolvedValue({
       valid: true,
       userId: "user_non_pro",
-      isPro: false,
       scope: "bundles:read",
     });
 
@@ -109,14 +108,15 @@ describe("POST /api/mcp auth policy", () => {
     expect(registerIconTools).toHaveBeenCalledTimes(1);
     expect(registerStarterPackTools).toHaveBeenCalledTimes(1);
     expect(registerResources).toHaveBeenCalledTimes(1);
-    expect(registerBundleTools).not.toHaveBeenCalled();
+    expect(registerBundleTools).toHaveBeenCalledWith(expect.any(Object), {
+      userId: "user_non_pro",
+    });
   });
 
-  it("registers bundle tools for valid Pro API tokens", async () => {
+  it("registers bundle tools for valid API tokens", async () => {
     validateApiTokenMock.mockResolvedValue({
       valid: true,
       userId: "user_pro",
-      isPro: true,
       scope: "bundles:read",
     });
 
@@ -132,7 +132,6 @@ describe("POST /api/mcp auth policy", () => {
     expect(registerBundleTools).toHaveBeenCalledTimes(1);
     expect(registerBundleTools).toHaveBeenCalledWith(expect.any(Object), {
       userId: "user_pro",
-      isPro: true,
     });
   });
 });

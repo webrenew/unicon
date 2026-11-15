@@ -31,7 +31,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/auth/tokens — Generate a new API token (Pro users only)
+ * POST /api/auth/tokens — Generate a new API token
  */
 export async function POST(request: Request) {
   const supabase = await createClient();

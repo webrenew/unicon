@@ -3191,7 +3191,7 @@ program
 
 program
   .command("login")
-  .description("Authenticate to access your saved bundles (Pro feature)")
+  .description("Authenticate to access your saved bundles for free")
   .action(async () => {
     // Check if already logged in
     const existingAuth = loadAuth();
@@ -3328,7 +3328,7 @@ program
           process.exit(1);
         }
         if (res.status === 403) {
-          spinner.fail(data.message || "Pro subscription required");
+          spinner.fail(data.message || "Authentication failed");
           process.exit(1);
         }
         throw new Error(data.message || "Failed to fetch bundles");

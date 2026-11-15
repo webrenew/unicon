@@ -50,7 +50,7 @@ do $$ declare result record; begin
   end loop;
   select * into result from public.create_bundle_atomic(
     '11111111-1111-1111-1111-111111111111','over-quota');
-  if result.success is distinct from false then raise exception 'Free quota no longer enforced'; end if;
+  if result.success is distinct from true then raise exception 'Unlimited bundle creation failed'; end if;
   begin
     perform public.validate_api_token('uni_local_fixture_invalid');
     raise exception 'Authenticated token validation unexpectedly succeeded';

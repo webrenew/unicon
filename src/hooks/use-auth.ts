@@ -3,21 +3,17 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
-import type { Profile, Subscription } from "@/types/database";
+import type { Profile } from "@/types/database";
 
 interface AuthState {
   user: User | null;
   profile: Profile | null;
-  subscription: Subscription | null;
-  isPro: boolean;
   isLoading: boolean;
 }
 
 const INITIAL_AUTH_STATE: AuthState = {
   user: null,
   profile: null,
-  subscription: null,
-  isPro: false,
   isLoading: true,
 };
 
@@ -36,36 +32,25 @@ function emit(next: AuthState) {
 async function fetchUserData(user: User | null, currentRequestId: number) {
   if (!user) {
     if (currentRequestId === requestId) {
-      emit({
-        user: null,
-        profile: null,
-        subscription: null,
-        isPro: false,
-        isLoading: false,
-      });
+      emit({ user: null, profile: null, isLoading: false });
     }
     return;
   }
 
   const supabase = createClient();
-  const [profileResult, subscriptionResult] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", user.id).single(),
-    supabase.from("subscriptions").select("*").eq("user_id", user.id).single(),
-  ]);
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .single();
 
   if (currentRequestId !== requestId) {
     return;
   }
 
-  const profile = profileResult.data as Profile | null;
-  const subscription = subscriptionResult.data as Subscription | null;
-  const isPro = subscription?.plan === "pro" && subscription?.status === "active";
-
   emit({
     user,
-    profile,
-    subscription,
-    isPro,
+    profile: profile as Profile | null,
     isLoading: false,
   });
 }

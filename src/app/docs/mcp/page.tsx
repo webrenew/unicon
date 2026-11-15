@@ -94,7 +94,7 @@ Parameters:
 - \`strokeWidth\` - Stroke width for all icons
 - \`normalizeStrokes\` - Skip fill icons when normalizing strokes
 
-## Saved Bundles (Pro)
+## Saved Bundles
 
 To save and access your bundles, authenticate once:
 
