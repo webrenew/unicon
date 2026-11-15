@@ -85,7 +85,12 @@ describe("POST /api/stripe/checkout", () => {
     expect(checkoutSessionCreateMock).not.toHaveBeenCalled();
   });
 
-  it("uses allowed payment methods when creating a checkout session", async () => {
+  it.each([
+    { paymentMethodTypes: ["card"] },
+    { paymentMethodTypes: ["link", "card"] },
+  ])("uses allowed payment methods when the session returns $paymentMethodTypes", async ({
+    paymentMethodTypes,
+  }) => {
     mockAuthenticatedUser({
       user: {
         id: "user_2",
@@ -98,7 +103,7 @@ describe("POST /api/stripe/checkout", () => {
     createOrRetrieveCustomerMock.mockResolvedValue("cus_test_123");
     checkoutSessionCreateMock.mockResolvedValue({
       id: "cs_test",
-      payment_method_types: ["card"],
+      payment_method_types: paymentMethodTypes,
       url: "https://checkout.stripe.com/c/pay_test",
     } as never);
 
@@ -155,6 +160,7 @@ describe("POST /api/stripe/checkout", () => {
       sessionId: "cs_filtered",
       paymentMethodTypes: [],
     });
+    expect(loggerErrorMock).not.toHaveBeenCalledWith("Stripe checkout error:", expect.anything());
     expect(checkoutSessionExpireMock).toHaveBeenCalledWith("cs_filtered");
     if (expireError) {
       expect(logger.warn).toHaveBeenCalledWith("Failed to expire rejected Stripe checkout session", {
