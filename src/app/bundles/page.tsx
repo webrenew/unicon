@@ -27,7 +27,7 @@ export default async function BundlesPage() {
 
   if (bundlesError) {
     logger.error("Bundles page query failed:", bundlesError);
-    throw bundlesError;
+    throw new Error("Failed to retrieve bundles", { cause: bundlesError });
   }
 
   return (
