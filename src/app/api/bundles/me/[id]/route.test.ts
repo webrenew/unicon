@@ -51,7 +51,6 @@ describe("GET /api/bundles/me/[id] query validation", () => {
     validateApiTokenMock.mockResolvedValue({
       valid: true,
       userId: "user-1",
-      isPro: true,
     });
     checkRateLimitMock.mockResolvedValue({
       success: true,

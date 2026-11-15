@@ -29,11 +29,10 @@ This policy covers:
 - The `@webrenew/unicon` CLI package
 - The `@webrenew/unicon-mcp-server` MCP server package
 - Authentication and authorization flows
-- Payment processing (Stripe integration)
 - API endpoints
 
 ## Out of Scope
 
-- Third-party services (Supabase, Stripe, Vercel)
+- Third-party services (Supabase, Vercel)
 - Social engineering attacks
 - Denial of service attacks

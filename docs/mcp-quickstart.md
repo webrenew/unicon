@@ -144,7 +144,7 @@ Claude will:
 **Plain SVG:**
 > "Get the SVG for simple-icons:github"
 
-### 6. Save a Bundle (Pro)
+### 6. Save a Bundle
 
 Authenticate once (OAuth device flow):
 

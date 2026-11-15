@@ -11,7 +11,6 @@ export interface TokenValidationResult {
   valid: boolean;
   userId?: string;
   scope?: string;
-  isPro?: boolean;
   error?: string;
 }
 
@@ -59,7 +58,6 @@ export async function validateApiToken(token: string): Promise<TokenValidationRe
     valid: true,
     userId: result.user_id,
     scope: result.scope,
-    isPro: result.is_pro,
   };
 }
 
@@ -70,7 +68,6 @@ export async function validateApiToken(token: string): Promise<TokenValidationRe
 export async function requireApiAuth(request: Request): Promise<{
   userId: string;
   scope: string;
-  isPro: boolean;
 }> {
   const token = extractBearerToken(request);
   
@@ -98,19 +95,8 @@ export async function requireApiAuth(request: Request): Promise<{
     );
   }
 
-  if (!result.isPro) {
-    throw new Response(
-      JSON.stringify({ 
-        error: "pro_required", 
-        message: "API access requires a Pro subscription. Upgrade at https://unicon.sh/pricing" 
-      }),
-      { status: 403, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
   return {
     userId: result.userId!,
     scope: result.scope!,
-    isPro: result.isPro!,
   };
 }

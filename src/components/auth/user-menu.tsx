@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/popover";
 import { LogOutIcon } from "@/components/icons/ui/log-out";
 import { PackageIcon } from "@/components/icons/ui/package";
-import { CrownIcon } from "@/components/icons/ui/crown";
 import { SettingsIcon } from "@/components/icons/ui/settings";
 import { Loader2Icon } from "@/components/icons/ui/loader-2";
 import { signOut } from "@/lib/auth/actions";
@@ -18,10 +17,9 @@ import type { Profile } from "@/types/database";
 
 interface UserMenuProps {
   profile: Profile;
-  isPro: boolean;
 }
 
-export function UserMenu({ profile, isPro }: UserMenuProps) {
+export function UserMenu({ profile }: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
@@ -76,11 +74,7 @@ export function UserMenu({ profile, isPro }: UserMenuProps) {
               {initials}
             </span>
           )}
-          {isPro && (
-            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center border-2 border-white dark:border-[hsl(0,0%,6%)]">
-              <CrownIcon className="w-2 h-2 text-white" />
-            </div>
-          )}
+
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-56 p-1">
@@ -92,16 +86,9 @@ export function UserMenu({ profile, isPro }: UserMenuProps) {
             {profile.email}
           </p>
           <div className="flex items-center gap-1.5 mt-1">
-            {isPro ? (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gradient-to-r from-amber-400/20 to-orange-500/20 text-amber-600 dark:text-amber-400">
-                <CrownIcon className="w-2.5 h-2.5" />
-                Pro
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/5 dark:bg-white/5 text-muted-foreground">
-                Free
-              </span>
-            )}
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/5 dark:bg-white/5 text-muted-foreground">
+              Free
+            </span>
           </div>
         </div>
 
@@ -114,17 +101,6 @@ export function UserMenu({ profile, isPro }: UserMenuProps) {
             <PackageIcon className="w-4 h-4" />
             My Bundles
           </Link>
-
-          {!isPro && (
-            <Link
-              href="/pricing"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--accent-aqua)] hover:bg-[var(--accent-aqua)]/5 rounded-md transition-colors"
-            >
-              <CrownIcon className="w-4 h-4" />
-              Upgrade to Pro
-            </Link>
-          )}
 
           <Link
             href="/settings"

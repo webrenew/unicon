@@ -454,9 +454,9 @@ Get a curated starter pack of icons for common use cases.
 }
 ```
 
-## Authenticated Tools (Pro)
+## Authenticated Tools
 
-Saved bundles are a Pro feature and require authentication. When authenticated, these tools appear in your MCP client.
+Saved bundles require authentication. Every user with a valid API token can use these tools in their MCP client.
 
 ### Authentication
 
@@ -786,7 +786,7 @@ Take advantage of semantic search:
 - **Search:** 100 requests per hour per user
 - **Get Icon:** 500 requests per hour per user
 - **Resources:** Unlimited (cached)
-- **Bundles (Pro):** 100 requests/minute
+- **Bundles (authenticated):** 100 requests/minute
 
 Need higher limits? Contact us for API key access.
 

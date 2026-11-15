@@ -45,7 +45,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/teams — Create a team (Pro users only)
+ * POST /api/teams — Create a team
  */
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -60,20 +60,6 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient();
 
-  // Check Pro status
-  const { data: sub } = await admin
-    .from("subscriptions")
-    .select("plan, status")
-    .eq("user_id", user.id)
-    .single();
-
-  if (!sub || sub.plan !== "pro" || sub.status !== "active") {
-    return NextResponse.json(
-      { error: "Pro subscription required to create teams" },
-      { status: 403 }
-    );
-  }
-
   // Check if user already owns a team
   const { data: existingTeam } = await admin
     .from("teams")
@@ -83,7 +69,7 @@ export async function POST(request: Request) {
 
   if (existingTeam) {
     return NextResponse.json(
-      { error: "You already own a team. One team per Pro account." },
+      { error: "You already own a team. One team per account." },
       { status: 409 }
     );
   }

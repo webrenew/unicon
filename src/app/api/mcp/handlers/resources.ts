@@ -166,7 +166,7 @@ Get a curated set of icons for common use cases.
 \`\`\`
 
 ### 5. Authenticated bundle tools (requires UNICON_API_TOKEN)
-Manage your saved bundles (Pro feature).
+Manage your saved bundles with an API token.
 
 - list_my_bundles: List your saved bundles
 - get_my_bundle: Fetch a saved bundle by ID (with optional code output)

@@ -1,25 +1,9 @@
-export type SubscriptionStatus = "active" | "canceled" | "past_due";
-export type SubscriptionPlan = "free" | "pro";
-
 export interface Profile {
   id: string;
   email: string | null;
   full_name: string | null;
   avatar_url: string | null;
   created_at: string;
-}
-
-export interface Subscription {
-  id: string;
-  user_id: string;
-  status: SubscriptionStatus;
-  plan: SubscriptionPlan;
-  provider: string | null;
-  provider_subscription_id: string | null;
-  provider_customer_id: string | null;
-  current_period_end: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
 export interface Bundle {
@@ -40,6 +24,27 @@ export interface Bundle {
   updated_at: string;
 }
 
+export type BundleSummary = Omit<Bundle, "icons">;
+
+const BUNDLE_SUMMARY_COLUMNS = {
+  id: true,
+  user_id: true,
+  name: true,
+  description: true,
+  is_public: true,
+  share_slug: true,
+  stroke_preset: true,
+  normalize_strokes: true,
+  target_stroke_width: true,
+  normalize_viewbox: true,
+  target_viewbox: true,
+  icon_count: true,
+  created_at: true,
+  updated_at: true,
+} satisfies Record<keyof BundleSummary, true>;
+
+export const BUNDLE_SUMMARY_SELECT = Object.keys(BUNDLE_SUMMARY_COLUMNS).join(", ");
+
 export interface BundleIcon {
   id: string;
   name: string;
@@ -52,10 +57,8 @@ export interface BundleIcon {
   defaultStroke?: boolean;
 }
 
-export interface UserWithSubscription {
+export interface UserWithProfile {
   profile: Profile;
-  subscription: Subscription;
-  isPro: boolean;
 }
 
 // Teams

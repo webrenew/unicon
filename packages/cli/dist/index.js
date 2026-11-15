@@ -2420,7 +2420,7 @@ program.command("audit").description("Audit project for icon usage vs bundled ic
     process.exit(1);
   }
 });
-program.command("login").description("Authenticate to access your saved bundles (Pro feature)").action(async () => {
+program.command("login").description("Authenticate to access your saved bundles for free").action(async () => {
   const existingAuth = loadAuth();
   if (existingAuth) {
     const shouldContinue = await confirm2("You are already logged in. Do you want to re-authenticate?");
@@ -2522,7 +2522,7 @@ program.command("bundles").description("List your saved bundles (requires login)
         process.exit(1);
       }
       if (res.status === 403) {
-        spinner.fail(data2.message || "Pro subscription required");
+        spinner.fail(data2.message || "Authentication failed");
         process.exit(1);
       }
       throw new Error(data2.message || "Failed to fetch bundles");

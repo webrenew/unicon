@@ -6,7 +6,6 @@ import { GithubIcon } from "@/components/icons/ui/github";
 import { TerminalIcon } from "@/components/icons/ui/terminal";
 import { FileTextIcon } from "@/components/icons/ui/file-text";
 import { UserIcon } from "@/components/icons/ui/user";
-import { HotPriceIcon } from "@/components/icons/ui/hot-price";
 import { PackageIcon } from "@/components/icons/ui/package";
 import { FigmaIcon } from "@/components/icons/ui/figma";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -24,7 +23,7 @@ interface SiteHeaderProps {
 export function SiteHeader({ variant = "default" }: SiteHeaderProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
-  const { user, profile, isPro, isLoading } = useAuth();
+  const { user, profile, isLoading } = useAuth();
 
   return (
     <>
@@ -84,13 +83,6 @@ export function SiteHeader({ variant = "default" }: SiteHeaderProps) {
                 <PackageIcon className="w-3.5 h-3.5" />
                 Packs
               </Link>
-              <Link
-                href="/pricing"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-muted-foreground hover:text-[var(--accent-mint)] hover:bg-[var(--accent-mint)]/5 transition-colors"
-              >
-                <HotPriceIcon className="w-3.5 h-3.5" />
-                Pricing
-              </Link>
             </nav>
           </div>
 
@@ -100,7 +92,7 @@ export function SiteHeader({ variant = "default" }: SiteHeaderProps) {
             {/* Auth: Login button or User menu */}
             {!isLoading && (
               user && profile ? (
-                <UserMenu profile={profile} isPro={isPro} />
+                <UserMenu profile={profile} />
               ) : (
                 <button
                   onClick={() => setLoginDialogOpen(true)}

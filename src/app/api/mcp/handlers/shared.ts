@@ -13,7 +13,6 @@ export const VALID_PACK_IDS = STARTER_PACKS.map((p) => p.id);
 // Auth context for authenticated tools
 export interface AuthContext {
   userId: string;
-  isPro: boolean;
 }
 
 // Reusable Zod schemas

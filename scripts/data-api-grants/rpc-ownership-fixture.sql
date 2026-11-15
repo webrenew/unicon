@@ -29,7 +29,7 @@ set local role authenticated;
 set local "request.jwt.claim.sub"='11111111-1111-1111-1111-111111111111';
 -- A claim string alone cannot take the trusted service-role exception.
 set local "request.jwt.claim.role"='service_role';
-do $$ declare result record; begin
+do $$ declare result record; direct_write_rejected boolean := false; begin
   begin
     perform public.create_bundle_atomic('22222222-2222-2222-2222-222222222222','cross-user');
     raise exception 'Cross-user bundle creation unexpectedly succeeded';
@@ -50,7 +50,27 @@ do $$ declare result record; begin
   end loop;
   select * into result from public.create_bundle_atomic(
     '11111111-1111-1111-1111-111111111111','over-quota');
-  if result.success is distinct from false then raise exception 'Free quota no longer enforced'; end if;
+  if result.success is distinct from true then raise exception 'Free bundle creation failed'; end if;
+  -- Fill exactly to the 250-row cap before testing the next insert.
+  insert into public.bundles(user_id,name,icons)
+  select '11111111-1111-1111-1111-111111111111','filler-' || series_index,'[]'::jsonb
+  from generate_series(
+    1,
+    250 - (select count(*) from public.bundles
+      where user_id='11111111-1111-1111-1111-111111111111')
+  ) as series_index;
+  select * into result from public.create_bundle_atomic(
+    '11111111-1111-1111-1111-111111111111','over-cap');
+  if result.success is distinct from false then raise exception 'Bundle cap not enforced'; end if;
+  begin
+    insert into public.bundles(user_id,name,icons)
+    values('11111111-1111-1111-1111-111111111111','direct-over-cap','[]'::jsonb);
+  exception when raise_exception then
+    direct_write_rejected := true;
+  end;
+  if not direct_write_rejected then
+    raise exception 'Direct bundle cap bypassed';
+  end if;
   begin
     perform public.validate_api_token('uni_local_fixture_invalid');
     raise exception 'Authenticated token validation unexpectedly succeeded';
@@ -74,6 +94,9 @@ do $$ declare result record; begin
   if result.success is distinct from true
      or result.bundle->>'user_id' is distinct from '22222222-2222-2222-2222-222222222222' then
     raise exception 'Trusted MCP bundle creation failed';
+  end if;
+  if public.can_create_bundle('11111111-1111-1111-1111-111111111111') then
+    raise exception 'Bundle cap helper not enforced';
   end if;
   select * into result from public.validate_api_token('uni_local_fixture_invalid');
   if result.valid is distinct from false then raise exception 'Token validation response changed'; end if;

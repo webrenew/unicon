@@ -1,9 +1,5 @@
 /**
  * Rate Limiting with Upstash Redis
- *
- * Different limits for free vs Pro users:
- * - Free: 10 requests per minute
- * - Pro: 100 requests per minute
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
@@ -13,8 +9,7 @@ import { logger } from "@/lib/logger";
 const RATE_LIMIT_WINDOW = "1 m";
 const RATE_LIMIT_RESET_MS = 60_000;
 
-const FREE_TIER_LIMIT = 10;
-const PRO_TIER_LIMIT = 100;
+const AUTHENTICATED_LIMIT = 100;
 const PUBLIC_LIMIT = 60;
 const DEVICE_CODE_LIMIT = 10;
 const DEVICE_TOKEN_LIMIT = 30;
@@ -56,11 +51,8 @@ function createLimiter(limit: number, prefix: string): Ratelimit | null {
   });
 }
 
-// Rate limiter for free users: 10 requests per minute
-export const freeTierLimiter = createLimiter(FREE_TIER_LIMIT, "ratelimit:free");
-
-// Rate limiter for Pro users: 100 requests per minute
-export const proTierLimiter = createLimiter(PRO_TIER_LIMIT, "ratelimit:pro");
+// Rate limiter for authenticated users: 100 requests per minute
+export const authenticatedLimiter = createLimiter(AUTHENTICATED_LIMIT, "ratelimit:authenticated");
 
 // Rate limiter for public/anonymous API access: 60 requests per minute per IP
 export const publicLimiter = createLimiter(PUBLIC_LIMIT, "ratelimit:public");
@@ -125,13 +117,13 @@ async function runRateLimitCheck(
 /**
  * Check rate limit for a user
  */
-export async function checkRateLimit(
-  userId: string,
-  isPro: boolean
-): Promise<RateLimitResult> {
-  const limiter = isPro ? proTierLimiter : freeTierLimiter;
-  const fallbackLimit = isPro ? PRO_TIER_LIMIT : FREE_TIER_LIMIT;
-  return runRateLimitCheck(limiter, userId, fallbackLimit, "Rate limit check failed.");
+export async function checkRateLimit(userId: string): Promise<RateLimitResult> {
+  return runRateLimitCheck(
+    authenticatedLimiter,
+    userId,
+    AUTHENTICATED_LIMIT,
+    "Rate limit check failed."
+  );
 }
 
 /**

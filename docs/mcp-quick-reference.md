@@ -76,7 +76,7 @@ npx @anthropic-ai/claude-code mcp add unicon -- npx -y @webrenew/unicon-mcp-serv
 "Generate social media icons (Twitter, GitHub, LinkedIn) as SVG"
 ```
 
-### 💾 Saved Bundles (Pro)
+### 💾 Saved Bundles
 
 Authenticate once:
 

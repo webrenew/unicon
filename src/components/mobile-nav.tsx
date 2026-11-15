@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { FileTextIcon } from "@/components/icons/ui/file-text";
 import { TerminalIcon } from "@/components/icons/ui/terminal";
-import { HotPriceIcon } from "@/components/icons/ui/hot-price";
 import { PackageIcon } from "@/components/icons/ui/package";
 import { FigmaIcon } from "@/components/icons/ui/figma";
 import { MCPIcon } from "@/components/icons/mcp-icon";
@@ -50,13 +49,6 @@ const navItems = [
     href: "/packs",
     label: "Packs",
     icon: PackageIcon,
-    color: "text-[var(--accent-mint)]",
-    hoverBg: "hover:bg-[var(--accent-mint)]/10",
-  },
-  {
-    href: "/pricing",
-    label: "Pricing",
-    icon: HotPriceIcon,
     color: "text-[var(--accent-mint)]",
     hoverBg: "hover:bg-[var(--accent-mint)]/10",
   },
