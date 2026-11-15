@@ -21,11 +21,31 @@ SECURITY DEFINER
 SET search_path TO ''
 AS $$
 DECLARE
+  v_owner_id UUID;
+  v_bundle_count INTEGER;
   v_bundle public.bundles;
 BEGIN
   IF current_setting('role', true) IS DISTINCT FROM 'service_role'
      AND (auth.uid() IS NULL OR p_user_id IS DISTINCT FROM auth.uid()) THEN
     RAISE EXCEPTION 'Bundle owner must match the authenticated user' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT id INTO v_owner_id
+  FROM public.profiles
+  WHERE id = p_user_id
+  FOR UPDATE;
+
+  IF v_owner_id IS NULL THEN
+    RAISE EXCEPTION 'Bundle owner must exist' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT COUNT(*)::INTEGER INTO v_bundle_count
+  FROM public.bundles
+  WHERE user_id = p_user_id;
+
+  IF v_bundle_count >= 250 THEN
+    RETURN QUERY SELECT FALSE, NULL::JSONB, 'Bundle limit reached (250 per account)'::TEXT;
+    RETURN;
   END IF;
 
   INSERT INTO public.bundles (
@@ -51,8 +71,14 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO ''
 AS $$
+DECLARE
+  v_bundle_count INTEGER;
 BEGIN
-  RETURN p_user_id IS NOT NULL;
+  SELECT COUNT(*)::INTEGER INTO v_bundle_count
+  FROM public.bundles
+  WHERE user_id = p_user_id;
+
+  RETURN p_user_id IS NOT NULL AND v_bundle_count < 250;
 END;
 $$;
 
@@ -159,13 +185,13 @@ BEGIN
   SET last_used_at = NOW()
   WHERE id = v_session.id;
 
-  -- Keep the legacy response shape during rollout. Every valid token has
-  -- access to the same features; callers no longer use this field.
+  -- Keep the legacy response shape during rollout. Entitlements no longer
+  -- exist, so is_pro is always false. Remove the field after #258.
   RETURN QUERY SELECT
     TRUE,
     v_session.user_id,
     v_session.scope,
-    TRUE,
+    FALSE,
     NULL::TEXT;
 END;
 $$;

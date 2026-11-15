@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 import { createClient } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  checkRateLimit: vi.fn(),
+  getRateLimitHeaders: vi.fn().mockReturnValue({}),
 }));
 
 type MockSupabaseClient = {
@@ -15,9 +21,16 @@ type MockSupabaseClient = {
 
 describe("POST /api/bundles", () => {
   const createClientMock = vi.mocked(createClient);
+  const checkRateLimitMock = vi.mocked(checkRateLimit);
 
   beforeEach(() => {
     vi.clearAllMocks();
+    checkRateLimitMock.mockResolvedValue({
+      success: true,
+      limit: 100,
+      remaining: 99,
+      reset: Date.now() + 60_000,
+    });
   });
 
   it("returns 401 when user is not authenticated", async () => {
@@ -112,6 +125,64 @@ describe("POST /api/bundles", () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "Permission denied" });
+  });
+
+  it("returns 429 when bundle creation exceeds the authenticated rate limit", async () => {
+    checkRateLimitMock.mockResolvedValue({
+      success: false,
+      limit: 100,
+      remaining: 0,
+      reset: Date.now() + 60_000,
+    });
+    const supabase: MockSupabaseClient = {
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: "user-1" } },
+          error: null,
+        }),
+      },
+      rpc: vi.fn(),
+    };
+    createClientMock.mockResolvedValue(supabase as unknown as Awaited<ReturnType<typeof createClient>>);
+
+    const response = await POST(
+      new Request("https://example.com/api/bundles", {
+        method: "POST",
+        body: JSON.stringify({ name: "test", icons: [] }),
+      })
+    );
+
+    expect(response.status).toBe(429);
+    expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for bundles containing more than 200 icons", async () => {
+    const supabase: MockSupabaseClient = {
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: "user-1" } },
+          error: null,
+        }),
+      },
+      rpc: vi.fn(),
+    };
+    createClientMock.mockResolvedValue(supabase as unknown as Awaited<ReturnType<typeof createClient>>);
+
+    const response = await POST(
+      new Request("https://example.com/api/bundles", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "oversized",
+          icons: Array.from({ length: 201 }, (_, index) => ({ id: `icon-${index}` })),
+        }),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "A bundle can contain at most 200 icons",
+    });
+    expect(supabase.rpc).not.toHaveBeenCalled();
   });
 
   it("returns 400 for invalid icon payload arrays", async () => {

@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { sanitizeBundleIcons } from "@/lib/svg-sanitizer";
+import { checkRateLimit, getRateLimitHeaders } from "@/lib/rate-limit";
+
+const MAX_BUNDLE_ICONS = 200;
 
 export async function GET() {
   try {
@@ -49,6 +52,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const rateLimit = await checkRateLimit(user.id);
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        { error: "rate_limit_exceeded", message: "Rate limit exceeded. Please wait before creating more bundles." },
+        { status: 429, headers: getRateLimitHeaders(rateLimit) }
+      );
+    }
+
     // Parse body early to fail fast on invalid input
     let body: Record<string, unknown>;
     try {
@@ -61,6 +72,13 @@ export async function POST(request: Request) {
 
     if (!name || !icons || !Array.isArray(icons)) {
       return NextResponse.json({ error: "Name and icons are required" }, { status: 400 });
+    }
+
+    if (icons.length > MAX_BUNDLE_ICONS) {
+      return NextResponse.json(
+        { error: `A bundle can contain at most ${MAX_BUNDLE_ICONS} icons` },
+        { status: 400 }
+      );
     }
 
     const sanitizedIcons = sanitizeBundleIcons(icons);

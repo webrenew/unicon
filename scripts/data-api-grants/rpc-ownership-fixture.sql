@@ -50,7 +50,13 @@ do $$ declare result record; begin
   end loop;
   select * into result from public.create_bundle_atomic(
     '11111111-1111-1111-1111-111111111111','over-quota');
-  if result.success is distinct from true then raise exception 'Unlimited bundle creation failed'; end if;
+  if result.success is distinct from true then raise exception 'Free bundle creation failed'; end if;
+  insert into public.bundles(user_id,name,icons)
+  select '11111111-1111-1111-1111-111111111111','filler-' || index,'[]'::jsonb
+  from generate_series(1,246) as index;
+  select * into result from public.create_bundle_atomic(
+    '11111111-1111-1111-1111-111111111111','over-cap');
+  if result.success is distinct from false then raise exception 'Bundle cap not enforced'; end if;
   begin
     perform public.validate_api_token('uni_local_fixture_invalid');
     raise exception 'Authenticated token validation unexpectedly succeeded';
@@ -74,6 +80,9 @@ do $$ declare result record; begin
   if result.success is distinct from true
      or result.bundle->>'user_id' is distinct from '22222222-2222-2222-2222-222222222222' then
     raise exception 'Trusted MCP bundle creation failed';
+  end if;
+  if public.can_create_bundle('11111111-1111-1111-1111-111111111111') then
+    raise exception 'Bundle cap helper not enforced';
   end if;
   select * into result from public.validate_api_token('uni_local_fixture_invalid');
   if result.valid is distinct from false then raise exception 'Token validation response changed'; end if;

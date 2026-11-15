@@ -84,13 +84,3 @@ export async function getUser(): Promise<UserWithProfile | null> {
 
   return { profile: profile as Profile };
 }
-
-export async function canCreateBundle(): Promise<{ allowed: boolean; reason?: string }> {
-  const userData = await getUser();
-
-  if (!userData) {
-    return { allowed: false, reason: "Not authenticated" };
-  }
-
-  return { allowed: true };
-}

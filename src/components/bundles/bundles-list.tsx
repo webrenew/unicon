@@ -76,13 +76,9 @@ export function BundlesList({ initialBundles }: BundlesListProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header with count and limit */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-medium text-foreground">Your Bundles</h2>
-          <span className="text-sm text-muted-foreground">{bundleCount}</span>
-        </div>
-
+      <div className="flex items-center gap-3">
+        <h2 className="text-lg font-medium text-foreground">Your Bundles</h2>
+        <span className="text-sm text-muted-foreground">{bundleCount}</span>
       </div>
 
       {bundles.length === 0 ? (
@@ -113,20 +109,17 @@ export function BundlesList({ initialBundles }: BundlesListProps) {
             />
           ))}
 
-          {/* Create new bundle card */}
-          {(
-            <Link
-              href="/"
-              className="flex flex-col items-center justify-center min-h-[200px] rounded-xl border-2 border-dashed border-black/10 dark:border-white/10 hover:border-[var(--accent-mint)]/50 hover:bg-[var(--accent-mint)]/5 transition-all group"
-            >
-              <div className="w-12 h-12 mb-3 flex items-center justify-center rounded-xl bg-black/5 dark:bg-white/5 group-hover:bg-[var(--accent-mint)]/10 transition-colors">
-                <PlusIcon className="w-6 h-6 text-black/30 dark:text-white/30 group-hover:text-[var(--accent-mint)] transition-colors" />
-              </div>
-              <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-                Create new bundle
-              </span>
-            </Link>
-          )}
+          <Link
+            href="/"
+            className="flex flex-col items-center justify-center min-h-[200px] rounded-xl border-2 border-dashed border-black/10 dark:border-white/10 hover:border-[var(--accent-mint)]/50 hover:bg-[var(--accent-mint)]/5 transition-all group"
+          >
+            <div className="w-12 h-12 mb-3 flex items-center justify-center rounded-xl bg-black/5 dark:bg-white/5 group-hover:bg-[var(--accent-mint)]/10 transition-colors">
+              <PlusIcon className="w-6 h-6 text-black/30 dark:text-white/30 group-hover:text-[var(--accent-mint)] transition-colors" />
+            </div>
+            <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+              Create new bundle
+            </span>
+          </Link>
         </div>
       )}
     </div>
