@@ -9,9 +9,8 @@ import { CopyIcon } from "@/components/icons/ui/copy";
 import { CheckIcon } from "@/components/icons/ui/check";
 import { GlobeIcon } from "@/components/icons/ui/globe";
 import { Loader2Icon } from "@/components/icons/ui/loader-2";
-import { generateRenderableSvg } from "@/lib/icon-utils";
 import { toast } from "sonner";
-import type { BundleSummary, BundleIcon } from "@/types/database";
+import type { BundleSummary } from "@/types/database";
 
 interface BundleCardProps {
   bundle: BundleSummary;
@@ -23,11 +22,6 @@ export function BundleCard({ bundle, onDelete, onTogglePublic }: BundleCardProps
   const [isDeleting, setIsDeleting] = useState(false);
   const [isTogglingPublic, setIsTogglingPublic] = useState(false);
   const [copied, setCopied] = useState(false);
-
-  // Safely parse icons array from bundle
-  const icons = Array.isArray(bundle.icons) ? bundle.icons : [];
-  const previewIcons = (icons as BundleIcon[]).slice(0, 6);
-  const remainingCount = Math.max(0, bundle.icon_count - 6);
 
   const handleDelete = async () => {
     if (!confirm("Are you sure you want to delete this bundle?")) return;
@@ -83,68 +77,11 @@ export function BundleCard({ bundle, onDelete, onTogglePublic }: BundleCardProps
     });
   };
 
-  // Render icon preview - SVG content is from trusted icon library data stored in database
-  const renderIconPreview = (icon: BundleIcon) => {
-    // Handle both old format (content) and new format (svg) for backwards compatibility
-    const svgContent = icon.svg || (icon as unknown as { content?: string }).content;
-
-    // Handle missing or empty SVG content
-    if (!svgContent) {
-      return { __html: "" };
-    }
-
-    // Determine correct viewBox based on icon source (Phosphor uses 256x256, all others use 24x24)
-    const defaultViewBox = icon.sourceId === "phosphor" ? "0 0 256 256" : "0 0 24 24";
-
-    // SECURITY NOTE: SVG content originates from curated icon libraries (Lucide, Phosphor, etc.)
-    // and is stored in the database by authenticated users. This is not arbitrary user input.
-    const svgHtml = generateRenderableSvg(
-      {
-        viewBox: icon.viewBox ?? defaultViewBox,
-        content: svgContent,
-        defaultStroke: icon.defaultStroke ?? true,
-        defaultFill: icon.defaultFill ?? false,
-        strokeWidth: icon.strokeWidth ?? "2",
-      },
-      {
-        size: 20,
-        ...(bundle.normalize_strokes && { strokeWidth: bundle.target_stroke_width ?? 2 }),
-      }
-    );
-    return { __html: svgHtml };
-  };
-
-  // Check if icon has valid SVG content (supports both old and new format)
-  const hasValidSvg = (icon: BundleIcon) => {
-    return !!(icon.svg || (icon as unknown as { content?: string }).content);
-  };
-
   return (
     <div className="group relative flex flex-col rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-white/[0.02] hover:border-black/20 dark:hover:border-white/20 transition-all overflow-hidden">
-      {/* Icon Preview Grid */}
       <div className="p-4 border-b border-black/5 dark:border-white/5">
-        <div className="grid grid-cols-6 gap-2">
-          {previewIcons.map((icon, i) => (
-            <div
-              key={i}
-              className="flex items-center justify-center w-10 h-10 rounded-lg bg-black/5 dark:bg-white/5"
-            >
-              {hasValidSvg(icon) ? (
-                <div
-                  className="w-5 h-5 text-black/70 dark:text-white/70 [&>svg]:w-full [&>svg]:h-full"
-                  // SVG content is from trusted icon libraries, not user input
-                  dangerouslySetInnerHTML={renderIconPreview(icon)}
-                />
-              ) : (
-                <PackageIcon className="w-4 h-4 text-black/20 dark:text-white/20" />
-              )}
-            </div>
-          ))}
-          {remainingCount > 0 && (
-            <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-black/5 dark:bg-white/5">
-              <span className="text-xs font-mono text-muted-foreground">+{remainingCount}</span>
-            </div>
-          )}
+        <div className="flex items-center justify-center h-20 rounded-lg bg-black/5 dark:bg-white/5">
+          <PackageIcon className="w-6 h-6 text-black/30 dark:text-white/30" />
         </div>
       </div>
 
