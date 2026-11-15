@@ -51,9 +51,14 @@ do $$ declare result record; direct_write_rejected boolean := false; begin
   select * into result from public.create_bundle_atomic(
     '11111111-1111-1111-1111-111111111111','over-quota');
   if result.success is distinct from true then raise exception 'Free bundle creation failed'; end if;
+  -- Fill exactly to the 250-row cap before testing the next insert.
   insert into public.bundles(user_id,name,icons)
   select '11111111-1111-1111-1111-111111111111','filler-' || series_index,'[]'::jsonb
-  from generate_series(1,246) as series_index;
+  from generate_series(
+    1,
+    250 - (select count(*) from public.bundles
+      where user_id='11111111-1111-1111-1111-111111111111')
+  ) as series_index;
   select * into result from public.create_bundle_atomic(
     '11111111-1111-1111-1111-111111111111','over-cap');
   if result.success is distinct from false then raise exception 'Bundle cap not enforced'; end if;

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { sanitizeBundleIcons } from "@/lib/svg-sanitizer";
 import { checkRateLimit, getRateLimitHeaders } from "@/lib/rate-limit";
+import { BUNDLE_SUMMARY_SELECT } from "@/types/database";
 
 const MAX_BUNDLE_ICONS = 200;
 
@@ -18,7 +19,7 @@ export async function GET() {
 
     const { data: bundles, error } = await supabase
       .from("bundles")
-      .select("id, user_id, name, description, is_public, share_slug, stroke_preset, normalize_strokes, target_stroke_width, normalize_viewbox, target_viewbox, icon_count, created_at, updated_at")
+      .select(BUNDLE_SUMMARY_SELECT)
       .eq("user_id", user.id)
       .order("updated_at", { ascending: false });
 

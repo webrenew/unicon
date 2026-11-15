@@ -3,7 +3,7 @@ import { SiteHeader } from "@/components/site-header";
 import { BundlesList } from "@/components/bundles/bundles-list";
 import { getUser } from "@/lib/auth/actions";
 import { createClient } from "@/lib/supabase/server";
-import type { BundleSummary } from "@/types/database";
+import { BUNDLE_SUMMARY_SELECT, type BundleSummary } from "@/types/database";
 
 export const metadata = {
   title: "My Bundles",
@@ -20,7 +20,7 @@ export default async function BundlesPage() {
   const supabase = await createClient();
   const { data: bundles } = await supabase
     .from("bundles")
-    .select("id, user_id, name, description, is_public, share_slug, stroke_preset, normalize_strokes, target_stroke_width, normalize_viewbox, target_viewbox, icon_count, created_at, updated_at")
+    .select(BUNDLE_SUMMARY_SELECT)
     .eq("user_id", user.profile.id)
     .order("created_at", { ascending: false });
 
