@@ -13,6 +13,7 @@ vi.mock("@/lib/stripe", () => ({
     checkout: {
       sessions: {
         create: vi.fn(),
+        expire: vi.fn(),
       },
     },
   },
@@ -59,10 +60,12 @@ function mockAuthenticatedUser({
 describe("POST /api/stripe/checkout", () => {
   const createOrRetrieveCustomerMock = vi.mocked(createOrRetrieveCustomer);
   const checkoutSessionCreateMock = vi.mocked(stripe.checkout.sessions.create);
+  const checkoutSessionExpireMock = vi.mocked(stripe.checkout.sessions.expire);
   const loggerErrorMock = vi.mocked(logger.error);
+  const loggerWarnMock = vi.mocked(logger.warn);
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it("returns 400 when authenticated user has no email", async () => {
@@ -81,6 +84,101 @@ describe("POST /api/stripe/checkout", () => {
     expect(from).toHaveBeenCalledWith("subscriptions");
     expect(createOrRetrieveCustomerMock).not.toHaveBeenCalled();
     expect(checkoutSessionCreateMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { paymentMethodTypes: ["card"] },
+    { paymentMethodTypes: ["link", "card"] },
+  ])("uses allowed payment methods when the session returns $paymentMethodTypes", async ({
+    paymentMethodTypes,
+  }) => {
+    mockAuthenticatedUser({
+      user: {
+        id: "user_2",
+        email: "pro@example.com",
+        user_metadata: { full_name: "Stripe Success User" },
+      },
+      subscription: null,
+    });
+
+    createOrRetrieveCustomerMock.mockResolvedValue("cus_test_123");
+    checkoutSessionCreateMock.mockResolvedValue({
+      id: "cs_test",
+      payment_method_types: paymentMethodTypes,
+      url: "https://checkout.stripe.com/c/pay_test",
+    } as never);
+
+    const response = await POST();
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      url: "https://checkout.stripe.com/c/pay_test",
+    });
+    expect(checkoutSessionCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: "cus_test_123",
+        mode: "subscription",
+        allowed_payment_method_types: ["card"],
+      })
+    );
+    expect(checkoutSessionCreateMock.mock.calls[0]?.[0]).not.toHaveProperty("payment_method_types");
+    expect(checkoutSessionExpireMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { outcome: "succeeds", expireError: null, paymentMethodTypes: [] },
+    {
+      outcome: "fails",
+      expireError: new Error("Session is already expired"),
+      paymentMethodTypes: [],
+    },
+    { outcome: "succeeds", expireError: null, paymentMethodTypes: ["link"] },
+  ])("expires a card-less session with $paymentMethodTypes when cleanup $outcome", async ({
+    expireError,
+    paymentMethodTypes,
+  }) => {
+    mockAuthenticatedUser({
+      user: {
+        id: "user_2",
+        email: "pro@example.com",
+        user_metadata: { full_name: "Filtered Card User" },
+      },
+      subscription: null,
+    });
+
+    createOrRetrieveCustomerMock.mockResolvedValue("cus_test_123");
+    checkoutSessionCreateMock.mockResolvedValue({
+      id: "cs_filtered",
+      payment_method_types: paymentMethodTypes,
+      url: "https://checkout.stripe.com/c/filtered",
+    } as never);
+
+    if (expireError) {
+      checkoutSessionExpireMock.mockRejectedValue(expireError);
+    } else {
+      checkoutSessionExpireMock.mockResolvedValue({ id: "cs_filtered" } as never);
+    }
+
+    const response = await POST();
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Failed to create checkout session",
+    });
+    expect(loggerErrorMock).toHaveBeenCalledWith("Stripe checkout session rejected card", {
+      sessionId: "cs_filtered",
+      paymentMethodTypes,
+    });
+    expect(loggerErrorMock).not.toHaveBeenCalledWith("Stripe checkout error:", expect.anything());
+    expect(checkoutSessionExpireMock).toHaveBeenCalledWith("cs_filtered");
+    if (expireError) {
+      expect(loggerWarnMock).toHaveBeenCalledWith("Failed to expire rejected Stripe checkout session", {
+        sessionId: "cs_filtered",
+        error: expireError,
+      });
+    } else {
+      expect(loggerWarnMock).not.toHaveBeenCalled();
+    }
   });
 
   it("returns controlled 500 response when Stripe checkout call fails", async () => {

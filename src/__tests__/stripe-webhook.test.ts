@@ -64,13 +64,13 @@ describe("getEndpointApiVersionDrift", () => {
     expect(
       getEndpointApiVersionDrift(
         { id: "evt_1", type: "customer.subscription.updated", api_version: "2025-12-15.clover" },
-        "2026-08-26.dahlia"
+        "2026-10-28.endive"
       )
     ).toEqual({
       eventId: "evt_1",
       eventType: "customer.subscription.updated",
       endpointApiVersion: "2025-12-15.clover",
-      sdkApiVersion: "2026-08-26.dahlia",
+      sdkApiVersion: "2026-10-28.endive",
     });
   });
 
@@ -78,7 +78,7 @@ describe("getEndpointApiVersionDrift", () => {
     expect(
       getEndpointApiVersionDrift(
         { id: "evt_2", type: "checkout.session.completed", api_version: null },
-        "2026-08-26.dahlia"
+        "2026-10-28.endive"
       )
     ).toMatchObject({ endpointApiVersion: null });
   });
@@ -86,8 +86,8 @@ describe("getEndpointApiVersionDrift", () => {
   it("should return null when the endpoint and SDK versions agree", () => {
     expect(
       getEndpointApiVersionDrift(
-        { id: "evt_3", type: "checkout.session.completed", api_version: "2026-08-26.dahlia" },
-        "2026-08-26.dahlia"
+        { id: "evt_3", type: "checkout.session.completed", api_version: "2026-10-28.endive" },
+        "2026-10-28.endive"
       )
     ).toBeNull();
   });
