@@ -39,7 +39,7 @@
     "directory": "packages/mcp-server"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
