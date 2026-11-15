@@ -11,12 +11,12 @@ import { GlobeIcon } from "@/components/icons/ui/globe";
 import { Loader2Icon } from "@/components/icons/ui/loader-2";
 import { generateRenderableSvg } from "@/lib/icon-utils";
 import { toast } from "sonner";
-import type { Bundle, BundleIcon } from "@/types/database";
+import type { BundleSummary, BundleIcon } from "@/types/database";
 
 interface BundleCardProps {
-  bundle: Bundle;
+  bundle: BundleSummary;
   onDelete: (id: string) => void;
-  onTogglePublic: (id: string, isPublic: boolean, updatedBundle?: Bundle) => void;
+  onTogglePublic: (id: string, isPublic: boolean, updatedBundle?: BundleSummary) => void;
 }
 
 export function BundleCard({ bundle, onDelete, onTogglePublic }: BundleCardProps) {

@@ -6,14 +6,14 @@ import { PackageIcon } from "@/components/icons/ui/package";
 import { Loader2Icon } from "@/components/icons/ui/loader-2";
 import { PlusIcon } from "@/components/icons/ui/plus";
 import Link from "next/link";
-import type { Bundle } from "@/types/database";
+import type { BundleSummary } from "@/types/database";
 
 interface BundlesListProps {
-  initialBundles: Bundle[];
+  initialBundles: BundleSummary[];
 }
 
 export function BundlesList({ initialBundles }: BundlesListProps) {
-  const [bundles, setBundles] = useState<Bundle[]>(initialBundles);
+  const [bundles, setBundles] = useState<BundleSummary[]>(initialBundles);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,15 +36,11 @@ export function BundlesList({ initialBundles }: BundlesListProps) {
     setBundles((prev) => prev.filter((b) => b.id !== id));
   };
 
-  // Use response data from PATCH instead of refetching to avoid race conditions
-  // The bundle-card component passes the updated bundle data from the API response
-  const handleTogglePublic = useCallback((id: string, isPublic: boolean, updatedBundle?: Bundle) => {
+  const handleTogglePublic = useCallback((id: string, isPublic: boolean, updatedBundle?: BundleSummary) => {
     setBundles((prev) =>
       prev.map((b) => {
         if (b.id !== id) return b;
-        // If we have the full updated bundle from API response, use it
         if (updatedBundle) return updatedBundle;
-        // Fallback to optimistic update
         return { ...b, is_public: isPublic, share_slug: isPublic ? b.share_slug : null };
       })
     );

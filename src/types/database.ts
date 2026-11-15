@@ -24,6 +24,10 @@ export interface Bundle {
   updated_at: string;
 }
 
+export type BundleSummary = Omit<Bundle, "icons"> & {
+  icons?: Bundle["icons"];
+};
+
 export interface BundleIcon {
   id: string;
   name: string;

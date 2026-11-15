@@ -3,7 +3,7 @@ import { SiteHeader } from "@/components/site-header";
 import { BundlesList } from "@/components/bundles/bundles-list";
 import { getUser } from "@/lib/auth/actions";
 import { createClient } from "@/lib/supabase/server";
-import type { Bundle } from "@/types/database";
+import type { BundleSummary } from "@/types/database";
 
 export const metadata = {
   title: "My Bundles",
@@ -29,7 +29,7 @@ export default async function BundlesPage() {
       <SiteHeader />
       <div className="flex-1 px-4 lg:px-20 xl:px-40 py-8">
         <div className="max-w-6xl mx-auto">
-          <BundlesList initialBundles={(bundles ?? []) as Bundle[]} />
+          <BundlesList initialBundles={(bundles ?? []) as BundleSummary[]} />
         </div>
       </div>
     </div>
