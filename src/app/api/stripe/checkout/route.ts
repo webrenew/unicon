@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { stripe, STRIPE_CONFIG, createOrRetrieveCustomer } from "@/lib/stripe";
 import { logger } from "@/lib/logger";
 
+const CARD_PAYMENT_METHOD = "card";
+
 export async function POST() {
   const supabase = await createClient();
 
@@ -42,7 +44,7 @@ export async function POST() {
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
-      allowed_payment_method_types: ["card"],
+      allowed_payment_method_types: [CARD_PAYMENT_METHOD],
       line_items: [
         {
           price: STRIPE_CONFIG.priceId,
@@ -61,8 +63,9 @@ export async function POST() {
       },
     });
 
-    if (!session.payment_method_types.includes("card")) {
-      throw new Error(`Stripe checkout session ${session.id} does not offer card payments`);
+    if (!session.payment_method_types.includes(CARD_PAYMENT_METHOD)) {
+      logger.error("Stripe checkout session rejected card", { sessionId: session.id });
+      return NextResponse.json({ error: "Failed to create checkout session" }, { status: 500 });
     }
 
     return NextResponse.json({ url: session.url });

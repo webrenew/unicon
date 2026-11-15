@@ -139,12 +139,9 @@ describe("POST /api/stripe/checkout", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Failed to create checkout session",
     });
-    expect(loggerErrorMock).toHaveBeenCalledWith(
-      "Stripe checkout error:",
-      expect.objectContaining({
-        message: "Stripe checkout session cs_filtered does not offer card payments",
-      })
-    );
+    expect(loggerErrorMock).toHaveBeenCalledWith("Stripe checkout session rejected card", {
+      sessionId: "cs_filtered",
+    });
   });
 
   it("returns controlled 500 response when Stripe checkout call fails", async () => {
