@@ -64,7 +64,18 @@ export async function POST() {
     });
 
     if (!session.payment_method_types.includes(CARD_PAYMENT_METHOD)) {
-      logger.error("Stripe checkout session rejected card", { sessionId: session.id });
+      logger.error("Stripe checkout session rejected card", {
+        sessionId: session.id,
+        paymentMethodTypes: session.payment_method_types,
+      });
+      try {
+        await stripe.checkout.sessions.expire(session.id);
+      } catch (error) {
+        logger.warn("Failed to expire rejected Stripe checkout session", {
+          sessionId: session.id,
+          error,
+        });
+      }
       return NextResponse.json({ error: "Failed to create checkout session" }, { status: 500 });
     }
 
