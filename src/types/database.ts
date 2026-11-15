@@ -26,7 +26,22 @@ export interface Bundle {
 
 export type BundleSummary = Omit<Bundle, "icons">;
 
-export const BUNDLE_SUMMARY_SELECT = "id, user_id, name, description, is_public, share_slug, stroke_preset, normalize_strokes, target_stroke_width, normalize_viewbox, target_viewbox, icon_count, created_at, updated_at";
+export const BUNDLE_SUMMARY_SELECT = ([
+  "id",
+  "user_id",
+  "name",
+  "description",
+  "is_public",
+  "share_slug",
+  "stroke_preset",
+  "normalize_strokes",
+  "target_stroke_width",
+  "normalize_viewbox",
+  "target_viewbox",
+  "icon_count",
+  "created_at",
+  "updated_at",
+] as const satisfies readonly (keyof BundleSummary)[]).join(", ");
 
 export interface BundleIcon {
   id: string;
