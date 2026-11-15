@@ -83,6 +83,37 @@ describe("POST /api/stripe/checkout", () => {
     expect(checkoutSessionCreateMock).not.toHaveBeenCalled();
   });
 
+  it("uses allowed payment methods when creating a checkout session", async () => {
+    mockAuthenticatedUser({
+      user: {
+        id: "user_2",
+        email: "pro@example.com",
+        user_metadata: { full_name: "Stripe Success User" },
+      },
+      subscription: null,
+    });
+
+    createOrRetrieveCustomerMock.mockResolvedValue("cus_test_123");
+    checkoutSessionCreateMock.mockResolvedValue({
+      url: "https://checkout.stripe.com/c/pay_test",
+    } as never);
+
+    const response = await POST();
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      url: "https://checkout.stripe.com/c/pay_test",
+    });
+    expect(checkoutSessionCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: "cus_test_123",
+        mode: "subscription",
+        allowed_payment_method_types: ["card"],
+      })
+    );
+    expect(checkoutSessionCreateMock.mock.calls[0]?.[0]).not.toHaveProperty("payment_method_types");
+  });
+
   it("returns controlled 500 response when Stripe checkout call fails", async () => {
     mockAuthenticatedUser({
       user: {

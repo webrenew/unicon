@@ -13,7 +13,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 vi.mock("@/lib/stripe", () => ({
-  STRIPE_API_VERSION: "2026-08-26.dahlia",
+  STRIPE_API_VERSION: "2026-10-28.endive",
   stripe: {
     webhooks: {
       constructEvent: vi.fn(),
@@ -104,11 +104,11 @@ function mockAdminClient(
   } as unknown as ReturnType<typeof createAdminClient>);
 }
 
-// Dahlia-shaped subscription: the billing period lives on the item only.
+// Endive-shaped subscription: the billing period lives on the item only.
 const PERIOD_END_SECONDS = 1790350444;
 const PERIOD_END_ISO = new Date(PERIOD_END_SECONDS * 1000).toISOString();
 
-function dahliaSubscription(overrides: Record<string, unknown> = {}) {
+function endiveSubscription(overrides: Record<string, unknown> = {}) {
   return {
     id: "sub_1",
     status: "active",
@@ -268,12 +268,12 @@ describe("POST /api/webhooks/stripe", () => {
       constructEventMock.mockReturnValue({
         id: "evt_checkout",
         type: "checkout.session.completed",
-        api_version: "2026-08-26.dahlia",
+        api_version: "2026-10-28.endive",
         data: {
           object: { metadata: { userId: "user_1" }, subscription: "sub_1", customer: "cus_1" },
         },
       } as never);
-      retrieveSubscriptionMock.mockResolvedValue(dahliaSubscription() as never);
+      retrieveSubscriptionMock.mockResolvedValue(endiveSubscription() as never);
 
       const eventsTable = createWebhookEventsTableMock({
         insertResult: { error: null },
@@ -310,8 +310,8 @@ describe("POST /api/webhooks/stripe", () => {
       constructEventMock.mockReturnValue({
         id: "evt_updated",
         type: "customer.subscription.updated",
-        api_version: "2026-08-26.dahlia",
-        data: { object: dahliaSubscription({ status: "past_due" }) },
+        api_version: "2026-10-28.endive",
+        data: { object: endiveSubscription({ status: "past_due" }) },
       } as never);
 
       const eventsTable = createWebhookEventsTableMock({
@@ -342,8 +342,8 @@ describe("POST /api/webhooks/stripe", () => {
       constructEventMock.mockReturnValue({
         id: "evt_no_period",
         type: "customer.subscription.updated",
-        api_version: "2026-08-26.dahlia",
-        data: { object: dahliaSubscription({ items: { data: [] } }) },
+        api_version: "2026-10-28.endive",
+        data: { object: endiveSubscription({ items: { data: [] } }) },
       } as never);
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -374,7 +374,7 @@ describe("POST /api/webhooks/stripe", () => {
         id: "evt_drift",
         type: "customer.subscription.updated",
         api_version: "2025-12-15.clover",
-        data: { object: dahliaSubscription() },
+        data: { object: endiveSubscription() },
       } as never);
 
       const eventsTable = createWebhookEventsTableMock({
@@ -395,7 +395,7 @@ describe("POST /api/webhooks/stripe", () => {
           eventId: "evt_drift",
           eventType: "customer.subscription.updated",
           endpointApiVersion: "2025-12-15.clover",
-          sdkApiVersion: "2026-08-26.dahlia",
+          sdkApiVersion: "2026-10-28.endive",
         }
       );
       expect(subscriptionsTable.update).toHaveBeenCalledTimes(1);
@@ -407,7 +407,7 @@ describe("POST /api/webhooks/stripe", () => {
       constructEventMock.mockReturnValue({
         id: "evt_match",
         type: "invoice.created",
-        api_version: "2026-08-26.dahlia",
+        api_version: "2026-10-28.endive",
       } as never);
 
       const eventsTable = createWebhookEventsTableMock({

@@ -5,8 +5,8 @@ let stripeClient: Stripe | null = null;
 /**
  * The Stripe API version every outbound request is made under.
  *
- * `satisfies Stripe.LatestApiVersion` is a deliberate tripwire: a stripe-node
- * minor that moves the SDK's latest version fails typecheck here instead of
+ * `satisfies Stripe.LatestApiVersion` is a deliberate tripwire: an SDK release
+ * that moves the SDK's latest version fails typecheck here instead of
  * silently changing response shapes on the billing path. Adopting a new
  * version is a reviewed change — diff the release's breaking changes against
  * `src/app/api/webhooks/stripe/route.ts`, then re-create the webhook endpoint
@@ -14,7 +14,7 @@ let stripeClient: Stripe | null = null;
  * and independent of this constant; the route warns on every event where the
  * two differ).
  */
-export const STRIPE_API_VERSION = "2026-08-26.dahlia" satisfies Stripe.LatestApiVersion;
+export const STRIPE_API_VERSION = "2026-10-28.endive" satisfies Stripe.LatestApiVersion;
 
 export function getStripe(): Stripe {
   if (!stripeClient) {
