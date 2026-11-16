@@ -9,6 +9,12 @@
  * - `<id>.md`: each skill's `SKILL.md`
  * - `references/<file>.md`: reference files, so the relative links in a
  *   skill (`references/x.md`) resolve next to `/skills/<id>.md`
+ *
+ * All skills share one `references/` namespace: a reference published by
+ * one skill is what `references/<file>.md` resolves to from every skill, and
+ * two skills may not publish the same path (`planSkillRegistry` throws).
+ * Today only `unicon` has references; namespace them per skill if a second
+ * skill needs its own.
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";

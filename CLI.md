@@ -214,8 +214,7 @@ unicon bundle [options]
 | `--format <type>` | Output format | react |
 | `--limit <n>` | Max icons to bundle | 50 |
 | `-o, --output <path>` | Output directory or file | ./icons |
-| `--split` | One file per icon (tree-shakeable) | false |
-| `--single-file` | All icons in one file | true |
+| `--single-file` | All icons in one file (react, svg, json). Without it, component formats get one file per icon | false |
 
 **Examples:**
 
@@ -226,8 +225,8 @@ unicon bundle --category Dashboards -o ./src/icons
 # Bundle by search query
 unicon bundle --query "navigation arrows" --format vue -o ./icons
 
-# Split into individual files (tree-shakeable)
-unicon bundle --category Social --split -o ./src/icons/social
+# One file per icon (the default for components; tree-shakeable)
+unicon bundle --category Social -o ./src/icons/social
 
 # Single file with all icons
 unicon bundle --query "home settings user" --single-file -o ./icons.tsx
@@ -552,8 +551,7 @@ The `.uniconrc.json` file defines your project's icon bundles for reproducible g
       "source": "string (optional)",
       "limit": "number (optional, default: 50)",
       "format": "react | vue | svelte | svg | json",
-      "output": "string (path)",
-      "split": "boolean (optional, default: false)"
+      "output": "string (path)"
     }
   ]
 }
@@ -570,7 +568,6 @@ The `.uniconrc.json` file defines your project's icon bundles for reproducible g
 | `limit` | number | No | Max icons (default: 50) |
 | `format` | string | Yes | Output format |
 | `output` | string | Yes | Output path (file or directory) |
-| `split` | boolean | No | One file per icon (default: false) |
 
 *Either `query` or `category` should be specified.
 
@@ -597,25 +594,25 @@ The `.uniconrc.json` file defines your project's icon bundles for reproducible g
       "name": "social",
       "category": "Social",
       "source": "phosphor",
-      "format": "vue",
-      "output": "./src/icons/social",
-      "split": true
+      "format": "react",
+      "output": "./src/icons/social.tsx"
     },
     {
       "name": "brands",
       "query": "github twitter facebook",
       "source": "simple-icons",
-      "format": "svg",
-      "output": "./public/icons/brands",
-      "split": true
+      "format": "json",
+      "output": "./src/data/brands.json"
     }
   ]
 }
 ```
 
-### Split Mode
+### One File per Icon
 
-When `split: true`, each icon becomes a separate file:
+`unicon bundle` with a directory output (the default for component formats) writes each icon to its own file. `unicon sync` writes each bundle to the single file at its `output`.
+
+`unicon bundle -o output/` gives:
 
 ```
 output/
@@ -828,7 +825,7 @@ unicon sync
 #### React/Next.js
 
 ```bash
-unicon bundle --category Dashboards --format react --split -o ./src/icons
+unicon bundle --category Dashboards --format react -o ./src/icons
 ```
 
 ```tsx
@@ -849,7 +846,7 @@ export function MyComponent() {
 #### Vue
 
 ```bash
-unicon bundle --category Dashboards --format vue --split -o ./src/icons
+unicon bundle --category Dashboards --format vue -o ./src/icons
 ```
 
 ```vue
@@ -869,7 +866,7 @@ import { Home, Settings, User } from "./icons";
 #### Svelte
 
 ```bash
-unicon bundle --category Dashboards --format svelte --split -o ./src/icons
+unicon bundle --category Dashboards --format svelte -o ./src/icons
 ```
 
 ```svelte

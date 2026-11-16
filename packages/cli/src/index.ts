@@ -2168,7 +2168,10 @@ interface SkillRegistryEntry {
   id: string;
   name: string;
   description: string;
-  file: string;
+  /** Served path, for example `/skills/unicon.md`. */
+  publicPath?: string;
+  /** Older registries: file name under `/skills/`. */
+  file?: string;
   tags: string[];
 }
 
@@ -2177,12 +2180,16 @@ async function fetchSkillsIndex(): Promise<SkillRegistryEntry[]> {
   if (!res.ok) {
     throw new Error(`Failed to fetch skills registry: ${res.status}`);
   }
-  const data = (await res.json()) as { skills: SkillRegistryEntry[] };
-  return data.skills;
+  // public/skills/index.json is an array; older registries wrapped it in { skills }.
+  const data = (await res.json()) as SkillRegistryEntry[] | { skills?: SkillRegistryEntry[] };
+  const skills = Array.isArray(data) ? data : data.skills;
+  if (!Array.isArray(skills)) throw new Error("Unexpected skills registry format");
+  return skills;
 }
 
-async function fetchSkillContent(file: string): Promise<string> {
-  const res = await fetch(`${API_BASE}/skills/${file}`);
+async function fetchSkillContent(skill: SkillRegistryEntry): Promise<string> {
+  const path = skill.publicPath ?? (skill.file ? `/skills/${skill.file}` : `/skills/${skill.id}.md`);
+  const res = await fetch(`${API_BASE}${path}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch skill: ${res.status}`);
   }
@@ -2248,7 +2255,7 @@ program
           process.exit(1);
         }
 
-        const content = await fetchSkillContent(skill.file);
+        const content = await fetchSkillContent(skill);
         spinner.stop();
 
         if (options.output) {
