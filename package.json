@@ -42,6 +42,7 @@
     "embeddings": "tsx scripts/generate-embeddings.ts",
     "embeddings:stats": "tsx scripts/generate-embeddings.ts --stats",
     "cache:warm": "tsx scripts/warm-cache.ts",
+    "skills:sync": "tsx scripts/sync-skills.ts",
     "cache:warm:prod": "tsx scripts/warm-cache.ts --url=https://unicon.sh",
     "schema:check:production": "tsx scripts/check-production-schema.ts",
     "test": "vitest run",

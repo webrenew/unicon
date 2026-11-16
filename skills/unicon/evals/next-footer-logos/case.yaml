@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: next-footer-logos
+expected_outcome: |
+  GitHub, Discord and X logos from Simple Icons and a Lucide chevron-right exist as components in src/components/icons, footer.tsx imports them from files that exist, the icon-only links have accessible labels, and no dependency was added.
+context:
+  scaffold_script: place-files.sh

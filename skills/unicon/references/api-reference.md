@@ -1,26 +1,33 @@
 # API Reference
 
-REST API for programmatic access to Unicon icons.
+The REST API returns icon data for code that calls unicon.sh directly. No
+authentication is needed for these endpoints.
 
 **Base URL**: `https://unicon.sh/api`
+
+**Rate limit**: 60 requests per minute per IP address, shared across these
+endpoints. Over the limit, the API returns `429` with `Retry-After` and
+`X-RateLimit-*` headers. Cache results instead of searching on every
+keystroke.
 
 ---
 
 ## GET /api/icons
 
 Fetch icons with optional filters. Supports AI-powered semantic search.
+Allows cross-origin requests (`Access-Control-Allow-Origin: *`).
 
 ### Parameters
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `q` | string | Search query (AI search if 3+ chars) | - |
+| `q` | string | Search query. Semantic search for 3+ characters, text search otherwise | - |
 | `source` | string | Filter by library | all |
-| `category` | string | Filter by category | all |
-| `names` | string | Comma-separated exact names | - |
-| `limit` | number | Results per page (max: 320) | 100 |
+| `category` | string | Filter by category (text search and browsing only) | all |
+| `names` | string | Comma-separated exact normalized names, for example `home,settings`. Returns every library's icon with each name | - |
+| `limit` | number | Results per page (max 320) | 100 |
 | `offset` | number | Pagination offset | 0 |
-| `ai` | boolean | Enable AI search | true |
+| `ai` | boolean | `false` uses fast text search instead of semantic search | true |
 
 ### Response
 
@@ -48,12 +55,15 @@ Fetch icons with optional filters. Supports AI-powered semantic search.
 }
 ```
 
+Text search and browsing responses also include `total`, the number of
+matching icons. Semantic responses do not.
+
 ### Search Types
 
 | Type | Description |
 |------|-------------|
 | `semantic` | AI-powered vector search with query expansion |
-| `text` | Basic text matching (fallback or short queries) |
+| `text` | Name and tag matching with aliases (`ai=false`, short queries, or fallback) |
 | `exact` | Exact name match (when using `names` param) |
 
 ### Examples
@@ -87,10 +97,15 @@ Hybrid semantic + exact match search with scoring.
 {
   "query": "string (required)",
   "sourceId": "string (optional)",
-  "limit": "number (optional, default: 50)",
-  "useAI": "boolean (optional, default: false)"
+  "limit": "number (optional, default 50, max 320)",
+  "offset": "number (optional, default 0)",
+  "useAI": "boolean (optional, default false)"
 }
 ```
+
+Queries shorter than 3 characters use text search. `useAI: true` asks Claude
+to expand queries that the built-in synonyms do not cover, with a 2-second
+time limit.
 
 ### Response
 
@@ -114,7 +129,8 @@ Hybrid semantic + exact match search with scoring.
     }
   ],
   "searchType": "semantic",
-  "expandedQuery": "home house building residence"
+  "expandedQuery": "home house building residence",
+  "hasMore": true
 }
 ```
 
@@ -157,6 +173,7 @@ interface IconData {
   tags: string[];          // ["house", "building"]
   viewBox: string;         // "0 0 24 24"
   content: string;         // Raw SVG inner content
+  pathData: { tag: string; attrs: Record<string, string> }[] | null; // Parsed elements (semantic results only)
   defaultStroke: boolean;  // Uses stroke for rendering
   defaultFill: boolean;    // Uses fill for rendering
   strokeWidth: string | null;
@@ -173,19 +190,27 @@ interface IconData {
 | `lucide` | Lucide | 1,900+ |
 | `phosphor` | Phosphor | 1,500+ |
 | `hugeicons` | Huge Icons | 1,800+ |
-| `heroicons` | Heroicons | 292 |
-| `tabler` | Tabler | 4,600+ |
-| `feather` | Feather | 287 |
-| `remix` | Remix Icon | 2,800+ |
-| `simple-icons` | Simple Icons | 3,300+ |
+| `heroicons` | Heroicons | 640+ |
+| `tabler` | Tabler | 4,900+ |
+| `feather` | Feather | 280+ |
+| `remix` | Remix Icon | 3,100+ |
+| `iconoir` | Iconoir | 1,600+ |
+| `simple-icons` | Simple Icons (brand logos) | 3,300+ |
 
 ---
 
-## Rate Limits
+## Caching
 
-- No authentication required
-- Reasonable use expected
-- Results are cached (1 hour for browsing, 1 minute for search)
+Responses are cached at the CDN:
+
+| Request | Cache time |
+|---------|-----------|
+| Browsing, text search, `names` | 1 hour |
+| Semantic search (`GET /api/icons?q=...`) | 30 minutes |
+| `POST /api/search` with an AI-expanded query | 1 minute |
+
+Requests that the CDN answers from its cache never reach the server and do
+not count toward the rate limit.
 
 ---
 
@@ -240,5 +265,6 @@ function Icon({ icon }: { icon: IconData }) {
 
 | Status | Description |
 |--------|-------------|
-| 400 | Invalid request (missing query, etc.) |
+| 400 | Invalid request (missing query, invalid `limit` or `offset`, etc.) |
+| 429 | Rate limit exceeded. Wait for `Retry-After` seconds |
 | 500 | Server error |

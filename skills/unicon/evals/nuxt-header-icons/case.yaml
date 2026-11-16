@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: nuxt-header-icons
+expected_outcome: |
+  Vue single-file components for settings, log out and user profile exist in the project, all from one icon library, and AppHeader.vue renders them as icon buttons in the nav. No React code, no new dependency, no interactive commands.
+context:
+  scaffold_script: place-files.sh
