@@ -14,9 +14,12 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # The GitHub release step needs to write; everything else only reads.
     permissions:
+      # The GitHub release step needs to write; everything else only reads.
       contents: write
+      # npm trusted publishing (OIDC): npm exchanges this token for a
+      # short-lived publish token, so no NPM_TOKEN secret is needed.
+      id-token: write
 
     steps:
       - name: Checkout
@@ -30,9 +33,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          # Node 24 bundles npm 11, which supports trusted publishing (11.5.1+).
+          node-version: '24'
           cache: pnpm
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Check npm supports trusted publishing
+        run: |
+          npm --version
+          node -e "const [a,b,c]=process.argv[1].split('.').map(Number); if (a<11||(a===11&&(b<5||(b===5&&c<1)))) { console.error('npm 11.5.1+ is required for trusted publishing'); process.exit(1) }" "$(npm --version)"
 
       # The CLI is a pnpm workspace package with no lockfile of its own, and its
       # build embeds ../../skills, so install from the repository root.
@@ -71,9 +80,9 @@ jobs:
 
       - name: Publish to npm
         working-directory: packages/cli
+        # Authenticates with OIDC through the trusted publisher configured on
+        # npmjs.com (webrenew/unicon, publish-cli.yml); provenance is automatic.
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
         if: github.event_name == 'push'

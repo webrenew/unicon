@@ -30,12 +30,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/WebRenew/unicon.git",
+    "url": "git+https://github.com/webrenew/unicon.git",
     "directory": "packages/cli"
   },
   "homepage": "https://unicon.sh",
   "bugs": {
-    "url": "https://github.com/WebRenew/unicon/issues"
+    "url": "https://github.com/webrenew/unicon/issues"
   },
   "engines": {
     "node": ">=18"
