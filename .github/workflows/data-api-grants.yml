@@ -2,6 +2,8 @@ name: Data API grants
 
 on:
   pull_request:
+  # Run the required checks on the merge queue's temporary branches too.
+  merge_group:
   push:
     branches: [main]
 
