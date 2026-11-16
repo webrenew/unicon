@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { logger } from "@/lib/logger";
 import { iconSearchCache } from "@/lib/search-cache";
+import { getLoadedIconCorpus, loadIconCorpus, shouldLoadIconCorpus } from "@/lib/icon-corpus";
+import { searchIconIndex } from "@/lib/icon-search";
+import { reportLocalSearch, type LocalSearchReport } from "@/lib/search-analytics-client";
 import { useEventListener } from "@/lib/use-event-listener";
 import { toast } from "sonner";
 import { SIZE_PRESETS, STROKE_PRESETS, type SizePreset, type StrokePreset } from "./styled-icon";
@@ -8,6 +11,14 @@ import type { IconData, IconLibrary } from "@/types/icon";
 
 // Keep homepage payload and first render lighter while preserving dense browsing.
 const ICONS_PER_PAGE = 160;
+
+// Server searches are debounced to limit requests. Once the corpus is loaded,
+// searches run in memory, so results can follow every keystroke.
+const SERVER_SEARCH_DEBOUNCE_MS = 150;
+const LOCAL_SEARCH_DEBOUNCE_MS = 0;
+// Local searches are reported to analytics once the query stops changing, so
+// typing "arrow" records one search, not five prefixes.
+const LOCAL_SEARCH_REPORT_DELAY_MS = 1000;
 
 interface UseIconBrowserParams {
   initialIcons: IconData[];
@@ -265,19 +276,64 @@ export function useIconBrowser({ initialIcons, totalCount }: UseIconBrowserParam
     }
   }, [performAddToBundle]);
 
+  // Local corpus search: download the corpus the first time someone interacts
+  // with search or filters, then answer searches in memory.
+  const [isCorpusReady, setIsCorpusReady] = useState(() => getLoadedIconCorpus() !== null);
+  const corpusLoadingRef = useRef(false);
+
+  /**
+   * Start loading the icon corpus. Safe to call on every interaction: it does
+   * nothing while a load is in flight, after success, or during the retry
+   * cooldown that follows a failure.
+   */
+  const warmSearch = useCallback(() => {
+    if (corpusLoadingRef.current || getLoadedIconCorpus() || !shouldLoadIconCorpus()) return;
+    corpusLoadingRef.current = true;
+    loadIconCorpus()
+      .then(() => setIsCorpusReady(true))
+      .catch((error: unknown) => {
+        logger.error("Failed to load icon corpus; using server search:", error);
+      })
+      .finally(() => {
+        corpusLoadingRef.current = false;
+      });
+  }, []);
+
+  // Any interaction (re)tries the load, so a failed load can recover later.
+  const hasInteracted =
+    search.length > 0 || selectedSource !== "all" || selectedCategory !== "all" || page !== 0;
+  useEffect(() => {
+    if (hasInteracted) warmSearch();
+  }, [hasInteracted, search, selectedSource, selectedCategory, page, warmSearch]);
+
   // Debounce search
+  const searchDebounceMs = isCorpusReady ? LOCAL_SEARCH_DEBOUNCE_MS : SERVER_SEARCH_DEBOUNCE_MS;
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search);
-    }, 150);
+    }, searchDebounceMs);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, searchDebounceMs]);
 
   // Track the latest in-flight request so slower stale responses (e.g. an
   // unfiltered search that resolves after the user picks a library) never
   // overwrite the current results. Refs are stable across renders.
   const requestIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const pendingReportRef = useRef<{ report: LocalSearchReport; timer: ReturnType<typeof setTimeout> } | null>(null);
+
+  /**
+   * Settle the pending local-search report. A report is dropped only when the
+   * query itself changed (an intermediate prefix while typing); paging,
+   * filtering or leaving the page means the user acted on it, so send it now.
+   */
+  const settlePendingReport = useCallback((nextQuery: string | null) => {
+    const pending = pendingReportRef.current;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingReportRef.current = null;
+    if (nextQuery === null || nextQuery === pending.report.query) reportLocalSearch(pending.report);
+  }, []);
 
   // Fetch icons - defined as a useCallback
   const fetchIcons = useCallback(
@@ -311,9 +367,10 @@ export function useIconBrowser({ initialIcons, totalCount }: UseIconBrowserParam
         }
       };
 
-      // A newer request supersedes any in-flight one.
+      // A newer request supersedes any in-flight one and any pending report.
       abortRef.current?.abort();
       abortRef.current = null;
+      settlePendingReport(debouncedSearch.trim());
 
       const isDefaultFirstPage =
         pageNum === 0 &&
@@ -327,6 +384,39 @@ export function useIconBrowser({ initialIcons, totalCount }: UseIconBrowserParam
         setExpandedQuery(null);
         setTotalResults(initialTotalCountRef.current);
         setIsLoading(false);
+        return;
+      }
+
+      const corpus = getLoadedIconCorpus();
+      if (corpus) {
+        const sourceId = selectedSource === "all" ? undefined : selectedSource;
+        const searchStartedAt = performance.now();
+        const local = searchIconIndex(corpus, {
+          query: debouncedSearch,
+          sourceId,
+          category: selectedCategory === "all" ? undefined : selectedCategory,
+          limit: ICONS_PER_PAGE,
+          offset: pageNum * ICONS_PER_PAGE,
+        });
+        const responseTimeMs = Math.round(performance.now() - searchStartedAt);
+
+        // Searches answered locally never reach /api/icons, so report them
+        // here. Like the API, record first pages of non-empty queries only.
+        const reportedQuery = debouncedSearch.trim();
+        if (pageNum === 0 && reportedQuery) {
+          const report = { query: reportedQuery, sourceFilter: sourceId, resultCount: local.total, responseTimeMs };
+          const timer = setTimeout(() => {
+            pendingReportRef.current = null;
+            reportLocalSearch(report);
+          }, LOCAL_SEARCH_REPORT_DELAY_MS);
+          pendingReportRef.current = { report, timer };
+        }
+
+        // Non-urgent: keep typing responsive while the grid re-renders.
+        startTransition(() => {
+          applyResults({ ...local, searchType: "text", expandedQuery: null });
+          setIsLoading(false);
+        });
         return;
       }
 
@@ -377,7 +467,7 @@ export function useIconBrowser({ initialIcons, totalCount }: UseIconBrowserParam
         if (isCurrent()) setIsLoading(false);
       }
     },
-    [debouncedSearch, selectedSource, selectedCategory]
+    [debouncedSearch, selectedSource, selectedCategory, settlePendingReport]
   );
 
   // Use a ref for fetchIcons to avoid stale closures in effects without adding
@@ -404,8 +494,11 @@ export function useIconBrowser({ initialIcons, totalCount }: UseIconBrowserParam
     fetchIconsRef.current(page);
   }, [debouncedSearch, selectedSource, selectedCategory, page]);
 
-  // Abort any in-flight request on unmount so it can't update state afterwards.
-  useEffect(() => () => abortRef.current?.abort(), []);
+  // On unmount, abort any in-flight request and send any pending report.
+  useEffect(() => () => {
+    abortRef.current?.abort();
+    settlePendingReport(null);
+  }, [settlePendingReport]);
 
   const goToPage = (newPage: number) => {
     if (newPage >= 0 && newPage < totalPages) {
@@ -431,6 +524,7 @@ export function useIconBrowser({ initialIcons, totalCount }: UseIconBrowserParam
     isLoading,
     searchType,
     expandedQuery,
+    warmSearch,
 
     // Display presets
     strokePreset,

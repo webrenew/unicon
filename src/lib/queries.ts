@@ -4,6 +4,7 @@ import { eq, like, or, sql, asc } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import type { IconData, SourceData } from "@/types/icon";
 import { expandSearchQuery } from "./icon-aliases";
+import { ICON_CORPUS_CHUNK_SIZE, ICON_CORPUS_FLAGS, type IconCorpusManifest, type IconCorpusRow } from "./icon-corpus-format";
 
 /**
  * Get all icon sources with their stats.
@@ -97,7 +98,9 @@ export async function searchIcons(params: {
     })
     .from(icons)
     .where(conditions.length > 0 ? sql`${sql.join(conditions, sql` AND `)}` : undefined)
-    .orderBy(asc(icons.normalizedName))
+    // Tie-break by id so ordering is deterministic and matches the client-side
+    // corpus search (`compareIconOrder` in icon-search.ts).
+    .orderBy(asc(icons.normalizedName), asc(icons.id))
     .limit(limit)
     .offset(offset);
 
@@ -317,6 +320,102 @@ export async function getCategories(): Promise<string[]> {
   return getCachedCategories();
 }
 
+
+/** SQL for the corpus version inputs: icon count and latest extraction time. */
+const CORPUS_VERSION_SQL = sql`
+  SELECT
+    (SELECT count(*) FROM icons) AS total,
+    (SELECT max(extracted_at) FROM sources) AS latestExtraction
+`;
+
+interface CorpusVersionRow {
+  total: number | null;
+  latestExtraction: number | null;
+}
+
+/**
+ * Build a manifest from the version inputs. The extractor deletes and
+ * re-inserts a source's icons and always bumps `sources.extracted_at`, so the
+ * version changes on every re-extraction.
+ */
+function toIconCorpusManifest(row: CorpusVersionRow | undefined): IconCorpusManifest {
+  const total = Number(row?.total ?? 0);
+  const latestExtraction = Number(row?.latestExtraction ?? 0);
+  return {
+    version: `${total}-${latestExtraction}`,
+    total,
+    chunkSize: ICON_CORPUS_CHUNK_SIZE,
+    chunks: Math.ceil(total / ICON_CORPUS_CHUNK_SIZE),
+  };
+}
+
+/**
+ * Get the icon corpus manifest: a version that changes when icons are
+ * re-extracted, plus the chunk layout for `getIconCorpusChunk`.
+ */
+export async function getIconCorpusManifest(): Promise<IconCorpusManifest> {
+  const rows = (await db.all(CORPUS_VERSION_SQL)) as CorpusVersionRow[];
+  return toIconCorpusManifest(rows[0]);
+}
+
+interface IconCorpusDbRow {
+  id: string;
+  name: string;
+  normalizedName: string;
+  sourceId: string;
+  category: string | null;
+  tags: string | null;
+  viewBox: string;
+  content: string;
+  defaultStroke: number | null;
+  defaultFill: number | null;
+  strokeWidth: string | null;
+  brandColor: string | null;
+}
+
+/**
+ * Get one chunk of the icon corpus in search order (normalized name, then id),
+ * with the corpus version read in the same transaction so the label always
+ * describes the rows it is attached to.
+ *
+ * Tags stay as the raw JSON string so client-side matching is byte-identical
+ * to the SQL `lower(tags) LIKE` search.
+ */
+export async function getIconCorpusChunk(
+  chunk: number
+): Promise<{ version: string; rows: IconCorpusRow[] }> {
+  const [versionRows, rows] = await db.batch([
+    db.all<CorpusVersionRow>(CORPUS_VERSION_SQL),
+    db.all<IconCorpusDbRow>(sql`
+      SELECT
+        id, name, normalized_name AS normalizedName, source_id AS sourceId,
+        category, tags, view_box AS viewBox, content,
+        default_stroke AS defaultStroke, default_fill AS defaultFill,
+        stroke_width AS strokeWidth, brand_color AS brandColor
+      FROM icons
+      ORDER BY normalized_name ASC, id ASC
+      LIMIT ${ICON_CORPUS_CHUNK_SIZE} OFFSET ${chunk * ICON_CORPUS_CHUNK_SIZE}
+    `),
+  ]);
+
+  return {
+    version: toIconCorpusManifest(versionRows[0]).version,
+    rows: rows.map((row): IconCorpusRow => [
+      row.id,
+      row.name,
+      row.normalizedName,
+      row.sourceId,
+      row.category,
+      row.tags,
+      row.viewBox,
+      row.content,
+      (row.defaultStroke ? ICON_CORPUS_FLAGS.defaultStroke : 0) |
+        (row.defaultFill ? ICON_CORPUS_FLAGS.defaultFill : 0),
+      row.strokeWidth,
+      row.brandColor,
+    ]),
+  };
+}
 
 // Helper to map database row to IconData type
 function mapIconRow(row: typeof icons.$inferSelect): IconData {
