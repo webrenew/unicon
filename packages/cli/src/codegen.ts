@@ -112,16 +112,22 @@ function getBody(icon: CodegenIcon): string {
 }
 
 const HYPHENATED_ATTRIBUTE = /(\s)([a-z]+(?:-[a-z]+)+)=/g;
+const NAMESPACED_ATTRIBUTE = /(\s)(xlink|xml):([a-z]+)=/g;
+const CLASS_ATTRIBUTE = /(\s)class=/g;
 
 /**
- * The SVG body with JSX attribute names (`fill-rule` → `fillRule`), so React
- * does not warn about invalid DOM properties. `data-*` and `aria-*` stay.
+ * The SVG body with JSX attribute names (`fill-rule` → `fillRule`,
+ * `xlink:href` → `xlinkHref`, `class` → `className`), so React does not warn
+ * about invalid DOM properties. `data-*` and `aria-*` stay.
  */
 export function toJsxBody(body: string): string {
-  return body.replace(HYPHENATED_ATTRIBUTE, (match, space: string, attribute: string) => {
-    if (attribute.startsWith("data-") || attribute.startsWith("aria-")) return match;
-    return `${space}${attribute.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())}=`;
-  });
+  return body
+    .replace(HYPHENATED_ATTRIBUTE, (match, space: string, attribute: string) => {
+      if (attribute.startsWith("data-") || attribute.startsWith("aria-")) return match;
+      return `${space}${attribute.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())}=`;
+    })
+    .replace(NAMESPACED_ATTRIBUTE, (_, space: string, prefix: string, name: string) => `${space}${prefix}${name.charAt(0).toUpperCase()}${name.slice(1)}=`)
+    .replace(CLASS_ATTRIBUTE, "$1className=");
 }
 
 function getStrokeWidth(icon: CodegenIcon): number {
@@ -354,13 +360,49 @@ export function isDirectoryPath(path: string): boolean {
 }
 
 /**
- * Merge a newly generated `index.ts` into an existing one: keep every line
- * already there (exports of icons from earlier runs or written by hand) and
- * append the new export lines that are missing.
+ * Merge a newly generated `index.ts` into an existing one: keep the lines
+ * already there (exports of icons from earlier runs or written by hand), drop
+ * exports whose file no longer exists, and append the new exports.
+ *
+ * @param fileExists - Whether a relative import target such as `./home` or
+ *   `./home.vue` exists in the directory; defaults to keeping every line
  */
-export function mergeIndexFile(existing: string, generated: string): string {
-  const lines = existing.replace(/\n+$/, "").split("\n");
-  const present = new Set(lines.map((line) => line.trim()));
+export function mergeIndexFile(existing: string, generated: string, fileExists: (target: string) => boolean = () => true): string {
+  const kept = existing
+    .replace(/\n+$/, "")
+    .split("\n")
+    .filter((line) => {
+      const target = EXPORT_TARGET.exec(line)?.[1];
+      return !target || fileExists(target);
+    });
+  const present = new Set(kept.map((line) => line.trim()));
   const added = generated.split("\n").filter((line) => line.startsWith("export ") && !present.has(line.trim()));
-  return `${[...lines, ...added].join("\n")}\n`;
+  return `${[...kept, ...added].join("\n")}\n`;
+}
+
+const EXPORT_TARGET = /^export\s.*\sfrom\s+["'](\.\/[^"']+)["'];?\s*$/;
+
+/**
+ * The files to write for a set of icons, relative to `directory`.
+ *
+ * @param outputIsDirectory - Whether `output` is a directory (one file per
+ *   icon) rather than a file (all icons in one file)
+ * @throws When a Vue or Svelte set is given a file path
+ */
+export function planIconSet(
+  icons: readonly CodegenIcon[],
+  format: IconFormat,
+  output: string,
+  outputIsDirectory: boolean
+): { directory: string; files: GeneratedFile[] } {
+  const trimmed = output.replace(/[\\/]+$/, "") || ".";
+  if (outputIsDirectory) return { directory: trimmed, files: generateSplitFiles(icons, format) };
+  if (format === "vue" || format === "svelte") {
+    throw new Error(`${format} needs one component per file, so the output must be a directory. Use "${trimmed.replace(/\.[a-zA-Z0-9]+$/, "")}" instead of "${output}".`);
+  }
+  const slash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return {
+    directory: slash === -1 ? "." : trimmed.slice(0, slash) || "/",
+    files: [{ path: trimmed.slice(slash + 1), content: generateSingleFile(icons, format) }],
+  };
 }

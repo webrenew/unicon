@@ -4,7 +4,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
 import figlet from "figlet";
-import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from "fs";
+import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync, unlinkSync, statSync } from "fs";
 import { dirname, resolve, join, extname, sep } from "path";
 import { homedir } from "os";
 import { createRequire } from "module";
@@ -27,11 +27,13 @@ import {
   isIconFormat,
   matchIconRefs,
   mergeIndexFile,
+  planIconSet,
   toComponentName,
   toSafeFileName,
   type GeneratedFile,
   type IconFormat,
 } from "./codegen";
+import { hasSelection, resolveBundleIcons, type IconFetchers } from "./bundles";
 
 const require = createRequire(import.meta.url);
 const { version: CLI_VERSION } = require("../package.json") as { version: string };
@@ -369,10 +371,15 @@ async function scanProjectForIconUsage(): Promise<{ iconName: string; file: stri
             // Look for icon imports
             // Match: import { IconName } from
             // Match: import IconName from
-            const importMatches = content.matchAll(/import\s*\{?\s*([A-Z][a-zA-Z0-9]+(?:Icon)?)\s*\}?\s*from/g);
+            // Match: import { A, B as C } from — every imported name counts
+            const importedNames = [...content.matchAll(/import\s+(?:type\s+)?(?:([A-Z]\w*)\s*,?\s*)?(?:\{([^}]*)\})?\s*from/g)].flatMap(
+              ([, defaultName, named]) => [
+                ...(defaultName ? [defaultName] : []),
+                ...(named ?? "").split(",").map((part) => part.trim().split(/\s+as\s+/)[0]?.trim() ?? ""),
+              ]
+            );
 
-            for (const match of importMatches) {
-              const name = match[1];
+            for (const name of importedNames) {
               if (name && /^[A-Z]/.test(name)) {
                 // Convert PascalCase to kebab-case for matching
                 const kebabName = name
@@ -414,20 +421,15 @@ async function auditProject(): Promise<AuditResult> {
   // Get all bundled icons from config
   if (config) {
     for (const bundle of config.bundles) {
-      if (bundle.query || bundle.category || bundle.source) {
-        try {
-          const { icons } = await fetchIcons({
-            query: bundle.query,
-            category: bundle.category,
-            source: bundle.source,
-            limit: bundle.limit || 100,
-          });
-          for (const icon of icons) {
-            bundled.add(icon.normalizedName);
-          }
-        } catch {
-          // Skip failed fetches
+      if (!hasSelection(bundle)) continue;
+      try {
+        // The same selection sync uses, so exact `icons` count as bundled.
+        const { icons } = await resolveBundleIcons(bundle, iconFetchers());
+        for (const icon of icons) {
+          bundled.add(icon.normalizedName);
         }
+      } catch {
+        // Skip failed fetches
       }
     }
   }
@@ -509,7 +511,6 @@ function createDefaultConfig(): UniconConfig {
         name: "common",
         icons: ["home", "settings", "user", "search", "menu", "x", "check"],
         source: "lucide",
-        format: "react",
         output: "./src/icons/common",
       },
       {
@@ -517,7 +518,6 @@ function createDefaultConfig(): UniconConfig {
         query: "arrow chevron menu",
         source: "lucide",
         limit: 30,
-        format: "react",
         output: "./src/icons/navigation",
       },
     ],
@@ -841,6 +841,35 @@ async function fetchIconsByRefs(
   return { icons: icons as Icon[], missing };
 }
 
+const IMPORT_EXTENSIONS = ["", ".tsx", ".ts", ".jsx", ".js", ".vue", ".svelte"];
+
+/** Whether a relative import such as `./home` resolves to a file in `directory`. */
+function importTargetExists(directory: string, relative: string): boolean {
+  return IMPORT_EXTENSIONS.some((ext) => {
+    const candidate = join(directory, relative + ext);
+    return existsSync(candidate) && statSync(candidate).isFile();
+  });
+}
+
+/**
+ * Whether `-o` names a directory: an existing directory, or a new path that
+ * ends with a slash or has no extension (so `icons.v2/` and existing
+ * `icons.v2` both count).
+ */
+function outputIsDirectory(path: string): boolean {
+  const full = resolve(process.cwd(), path);
+  if (existsSync(full)) return statSync(full).isDirectory();
+  return isDirectoryPath(path);
+}
+
+/** Network access for bundle resolution. */
+function iconFetchers(useCache = true): IconFetchers<Icon> {
+  return {
+    byRefs: (refs, defaultSource) => fetchIconsByRefs(refs, defaultSource, { useCache }),
+    search: async (params) => (await fetchIcons(params, { useCache })).icons,
+  };
+}
+
 /** Write generated files under a directory, creating it if needed. */
 function writeGeneratedFiles(directory: string, files: readonly GeneratedFile[]): void {
   const fullDir = resolve(process.cwd(), directory);
@@ -848,8 +877,11 @@ function writeGeneratedFiles(directory: string, files: readonly GeneratedFile[])
   for (const file of files) {
     const target = resolve(fullDir, file.path);
     if (!target.startsWith(fullDir + sep)) throw new Error(`Refusing to write outside ${directory}: ${file.path}`);
-    // Keep exports from earlier runs, so adding icons to a folder never drops existing ones.
-    const content = file.path === "index.ts" && existsSync(target) ? mergeIndexFile(readFileSync(target, "utf-8"), file.content) : file.content;
+    // Keep exports from earlier runs, so adding icons to a folder never drops
+    // existing ones; drop exports whose file is gone. index.ts is written last.
+    const content = file.path === "index.ts" && existsSync(target)
+      ? mergeIndexFile(readFileSync(target, "utf-8"), file.content, (relative) => importTargetExists(fullDir, relative))
+      : file.content;
     writeFileSync(target, content, "utf-8");
   }
 }
@@ -863,21 +895,23 @@ function writeGeneratedFiles(directory: string, files: readonly GeneratedFile[])
  * @throws When a Vue or Svelte set is given a file path
  */
 function writeIconSet(icons: readonly Icon[], format: IconFormat, output: string, options: { dryRun?: boolean } = {}): string {
-  if (isDirectoryPath(output)) {
-    const files = generateSplitFiles(icons, format);
-    if (!options.dryRun) writeGeneratedFiles(output, files);
-    return `${output.replace(/[\\/]+$/, "")}/ (${files.length} files)`;
-  }
-  if (COMPONENT_FORMATS.has(format) && format !== "react") {
-    const suggestion = output.replace(/\.[a-zA-Z0-9]+$/, "");
-    throw new Error(`${format} needs one component per file, so the output must be a directory. Use "${suggestion}" instead of "${output}".`);
-  }
-  if (!options.dryRun) {
-    const fullPath = resolve(process.cwd(), output);
-    mkdirSync(dirname(fullPath), { recursive: true });
-    writeFileSync(fullPath, generateSingleFile(icons, format), "utf-8");
-  }
-  return output;
+  const asDirectory = outputIsDirectory(output);
+  const { directory, files } = planIconSet(icons, format, output, asDirectory);
+  if (!options.dryRun) writeGeneratedFiles(directory, files);
+  return asDirectory ? `${directory}/ (${files.length} files)` : output;
+}
+
+/**
+ * Code for the clipboard in the project's format. Vue and Svelte need one
+ * component per file, so several of them are copied as consecutive files
+ * with a comment naming each one.
+ */
+function clipboardCode(icons: readonly Icon[], format: IconFormat): string {
+  if (format !== "vue" && format !== "svelte") return generateSingleFile(icons, format);
+  return generateSplitFiles(icons, format)
+    .filter((file) => file.path !== "index.ts")
+    .map((file) => (icons.length > 1 ? `<!-- ${file.path} -->\n${file.content}` : file.content))
+    .join("\n");
 }
 
 /** Validate a `--format` value, exiting with a message when it is unknown. */
@@ -902,7 +936,7 @@ async function syncBundle(
   bundle: BundleConfig,
   options: { useCache?: boolean; dryRun?: boolean } = {}
 ): Promise<{ count: number; written: string; missing: string[] } | { skipped: string }> {
-  if (!bundle.icons?.length && !bundle.query && !bundle.category && !bundle.source) {
+  if (!hasSelection(bundle)) {
     return { skipped: "no icons, query, category, or source specified" };
   }
 
@@ -915,19 +949,7 @@ async function syncBundle(
     throw new Error(`unknown format "${String(bundle.format)}"`);
   }
 
-  let icons: Icon[] = [];
-  let missing: string[] = [];
-  if (bundle.icons?.length) {
-    ({ icons, missing } = await fetchIconsByRefs(bundle.icons, bundle.source, { useCache: options.useCache ?? true }));
-  }
-  if (bundle.query || bundle.category || (!bundle.icons?.length && bundle.source)) {
-    const { icons: found } = await fetchIcons(
-      { query: bundle.query, category: bundle.category, source: bundle.source, limit: bundle.limit || 100 },
-      { useCache: options.useCache ?? true }
-    );
-    const seen = new Set(icons.map((icon) => icon.id));
-    icons.push(...found.filter((icon) => !seen.has(icon.id)));
-  }
+  const { icons, missing } = await resolveBundleIcons(bundle, iconFetchers(options.useCache ?? true));
 
   if (icons.length === 0) return { skipped: missing.length ? `not found: ${missing.join(", ")}` : "no icons found" };
   const written = writeIconSet(icons, format, bundle.output, { dryRun: options.dryRun ?? false });
@@ -1026,7 +1048,7 @@ program
         const action = await p.select({
           message: "What would you like to do?",
           options: [
-            { value: "copy", label: "Copy to clipboard", hint: "Copy React component(s)" },
+            { value: "copy", label: "Copy to clipboard", hint: "Copy component code for this project" },
             { value: "save", label: "Save to file", hint: "Write to disk" },
             { value: "star", label: "Add to favorites", hint: "Star for later" },
             { value: "bundle", label: "Create bundle", hint: "Add to .uniconrc.json" },
@@ -1043,7 +1065,7 @@ program
 
         switch (action) {
           case "copy": {
-            const content = generateSingleFile(selectedIcons, "react");
+            const content = clipboardCode(selectedIcons, format);
             const success = await copyToClipboard(content);
             if (success) {
               console.log(chalk.green(`✓ ${selectedIcons.length} icon(s) copied to clipboard`));
@@ -1223,7 +1245,7 @@ program
           process.exit(1);
         }
       } else if (options.output) {
-        const output: string = isDirectoryPath(options.output)
+        const output: string = outputIsDirectory(options.output)
           ? join(options.output, `${toSafeFileName(icon.normalizedName)}.${FILE_EXTENSIONS[format]}`)
           : options.output;
         const fullPath = resolve(process.cwd(), output);
@@ -1283,16 +1305,18 @@ program
         console.log(chalk.red(`Error: --single-file is not supported for ${format}. Vue and Svelte need one component per file.`));
         process.exit(1);
       }
-      if (isDirectoryPath(output)) output = join(output, `icons.${FILE_EXTENSIONS[format]}`);
+      if (outputIsDirectory(output)) output = join(output, `icons.${FILE_EXTENSIONS[format]}`);
     }
 
     const spinner = ora("Fetching icons...").start();
 
     try {
       let icons: Icon[];
+      let missing: string[] = [];
       if (refs) {
         const result = await fetchIconsByRefs(refs, options.source);
         icons = result.icons;
+        missing = result.missing;
         if (result.missing.length > 0) {
           spinner.warn(chalk.yellow(`Not found: ${result.missing.join(", ")}. Check names with unicon search.`));
           spinner.start("Writing icons...");
@@ -1313,10 +1337,12 @@ program
 
       const written = writeIconSet(icons, format, output);
       spinner.succeed(`${chalk.green(icons.length)} icons → ${chalk.cyan(written)}`);
+      // The found icons are written, but a typo in --icons still fails the run.
+      if (missing.length > 0) process.exitCode = 1;
 
       const sources = [...new Set(icons.map((i) => i.sourceId))];
       console.log(chalk.dim(`  Sources: ${sources.join(", ")}  Format: ${format}`));
-      if (isDirectoryPath(output) && COMPONENT_FORMATS.has(format)) {
+      if (outputIsDirectory(output) && COMPONENT_FORMATS.has(format)) {
         const importPath = output.replace(/[\\/]+$/, "");
         console.log(chalk.dim(`  Import: import { ${toComponentName(icons[0]?.normalizedName ?? "icon")} } from "${/^\.{0,2}\//.test(importPath) ? importPath : `./${importPath}`}";`));
       } else if (format === "react" && icons.length > 10) {
@@ -2273,7 +2299,10 @@ program
         return;
       }
       spinner.succeed(`${bundleName}: ${chalk.green(result.count)} icons → ${chalk.cyan(result.written)}`);
-      if (result.missing.length > 0) console.log(chalk.yellow(`  Not found: ${result.missing.join(", ")}`));
+      if (result.missing.length > 0) {
+        console.log(chalk.red(`  Not found: ${result.missing.join(", ")}. Check the names with unicon search.`));
+        process.exitCode = 1;
+      }
     } catch (error) {
       spinner.fail(`${bundleName}: ${error instanceof Error ? error.message : "Unknown error"}`);
       process.exit(1);
@@ -2346,7 +2375,7 @@ program
       const action = await p.select({
         message: `What would you like to do with ${selectedIcons.length} icon(s)?`,
         options: [
-          { value: "copy", label: "Copy to clipboard", hint: "Copy as React components" },
+          { value: "copy", label: "Copy to clipboard", hint: "Copy component code for this project" },
           { value: "save", label: "Save to files", hint: "Write individual files" },
           { value: "star", label: "Add to favorites", hint: "Star for later use" },
           { value: "preview", label: "Preview ASCII", hint: "Show ASCII art previews" },
@@ -2362,7 +2391,7 @@ program
 
       switch (action) {
         case "copy": {
-          const content = generateSingleFile(selectedIcons, "react");
+          const content = clipboardCode(selectedIcons, getFormatForFramework(detectFramework().framework));
           const success = await copyToClipboard(content);
           p.outro(success
             ? chalk.green(`✓ ${selectedIcons.length} icon(s) copied to clipboard`)

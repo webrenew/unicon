@@ -5,7 +5,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
 import figlet from "figlet";
-import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from "fs";
+import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync, unlinkSync, statSync } from "fs";
 import { dirname, resolve, join, extname, sep } from "path";
 import { homedir } from "os";
 import { createRequire } from "module";
@@ -76,11 +76,13 @@ function getBody(icon) {
   return icon.content.replace(TITLE_PATTERN, "").trim();
 }
 var HYPHENATED_ATTRIBUTE = /(\s)([a-z]+(?:-[a-z]+)+)=/g;
+var NAMESPACED_ATTRIBUTE = /(\s)(xlink|xml):([a-z]+)=/g;
+var CLASS_ATTRIBUTE = /(\s)class=/g;
 function toJsxBody(body) {
   return body.replace(HYPHENATED_ATTRIBUTE, (match, space, attribute) => {
     if (attribute.startsWith("data-") || attribute.startsWith("aria-")) return match;
     return `${space}${attribute.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())}=`;
-  });
+  }).replace(NAMESPACED_ATTRIBUTE, (_, space, prefix, name) => `${space}${prefix}${name.charAt(0).toUpperCase()}${name.slice(1)}=`).replace(CLASS_ATTRIBUTE, "$1className=");
 }
 function getStrokeWidth(icon) {
   return parseFloat(icon.strokeWidth ?? "") || DEFAULT_STROKE_WIDTH;
@@ -264,12 +266,49 @@ function isDirectoryPath(path) {
   const last = path.split(/[\\/]/).pop() ?? "";
   return !/\.[a-zA-Z0-9]+$/.test(last);
 }
-function mergeIndexFile(existing, generated) {
-  const lines = existing.replace(/\n+$/, "").split("\n");
-  const present = new Set(lines.map((line) => line.trim()));
+function mergeIndexFile(existing, generated, fileExists = () => true) {
+  const kept = existing.replace(/\n+$/, "").split("\n").filter((line) => {
+    const target = EXPORT_TARGET.exec(line)?.[1];
+    return !target || fileExists(target);
+  });
+  const present = new Set(kept.map((line) => line.trim()));
   const added = generated.split("\n").filter((line) => line.startsWith("export ") && !present.has(line.trim()));
-  return `${[...lines, ...added].join("\n")}
+  return `${[...kept, ...added].join("\n")}
 `;
+}
+var EXPORT_TARGET = /^export\s.*\sfrom\s+["'](\.\/[^"']+)["'];?\s*$/;
+function planIconSet(icons, format, output, outputIsDirectory2) {
+  const trimmed = output.replace(/[\\/]+$/, "") || ".";
+  if (outputIsDirectory2) return { directory: trimmed, files: generateSplitFiles(icons, format) };
+  if (format === "vue" || format === "svelte") {
+    throw new Error(`${format} needs one component per file, so the output must be a directory. Use "${trimmed.replace(/\.[a-zA-Z0-9]+$/, "")}" instead of "${output}".`);
+  }
+  const slash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return {
+    directory: slash === -1 ? "." : trimmed.slice(0, slash) || "/",
+    files: [{ path: trimmed.slice(slash + 1), content: generateSingleFile(icons, format) }]
+  };
+}
+
+// src/bundles.ts
+var DEFAULT_BUNDLE_LIMIT = 100;
+function hasSelection(bundle) {
+  return Boolean(bundle.icons?.length || bundle.query || bundle.category || bundle.source);
+}
+function usesSearch(bundle) {
+  return Boolean(bundle.query || bundle.category || !bundle.icons?.length && bundle.source);
+}
+async function resolveBundleIcons(bundle, fetchers) {
+  const exact = bundle.icons?.length ? await fetchers.byRefs(bundle.icons, bundle.source) : { icons: [], missing: [] };
+  if (!usesSearch(bundle)) return exact;
+  const found = await fetchers.search({
+    query: bundle.query,
+    category: bundle.category,
+    source: bundle.source,
+    limit: bundle.limit || DEFAULT_BUNDLE_LIMIT
+  });
+  const seen = new Set(exact.icons.map((icon) => icon.id));
+  return { icons: [...exact.icons, ...found.filter((icon) => !seen.has(icon.id))], missing: exact.missing };
 }
 
 // src/index.ts
@@ -486,9 +525,13 @@ async function scanProjectForIconUsage() {
         if ([".tsx", ".jsx", ".vue", ".svelte", ".ts", ".js"].includes(ext)) {
           try {
             const content = readFileSync(fullPath, "utf-8");
-            const importMatches = content.matchAll(/import\s*\{?\s*([A-Z][a-zA-Z0-9]+(?:Icon)?)\s*\}?\s*from/g);
-            for (const match of importMatches) {
-              const name = match[1];
+            const importedNames = [...content.matchAll(/import\s+(?:type\s+)?(?:([A-Z]\w*)\s*,?\s*)?(?:\{([^}]*)\})?\s*from/g)].flatMap(
+              ([, defaultName, named]) => [
+                ...defaultName ? [defaultName] : [],
+                ...(named ?? "").split(",").map((part) => part.trim().split(/\s+as\s+/)[0]?.trim() ?? "")
+              ]
+            );
+            for (const name of importedNames) {
               if (name && /^[A-Z]/.test(name)) {
                 const kebabName = name.replace(/Icon$/, "").replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
                 usages.push({ iconName: kebabName, file: fullPath });
@@ -516,19 +559,13 @@ async function auditProject() {
   const bundled = /* @__PURE__ */ new Set();
   if (config) {
     for (const bundle of config.bundles) {
-      if (bundle.query || bundle.category || bundle.source) {
-        try {
-          const { icons } = await fetchIcons({
-            query: bundle.query,
-            category: bundle.category,
-            source: bundle.source,
-            limit: bundle.limit || 100
-          });
-          for (const icon of icons) {
-            bundled.add(icon.normalizedName);
-          }
-        } catch {
+      if (!hasSelection(bundle)) continue;
+      try {
+        const { icons } = await resolveBundleIcons(bundle, iconFetchers());
+        for (const icon of icons) {
+          bundled.add(icon.normalizedName);
         }
+      } catch {
       }
     }
   }
@@ -578,7 +615,6 @@ function createDefaultConfig() {
         name: "common",
         icons: ["home", "settings", "user", "search", "menu", "x", "check"],
         source: "lucide",
-        format: "react",
         output: "./src/icons/common"
       },
       {
@@ -586,7 +622,6 @@ function createDefaultConfig() {
         query: "arrow chevron menu",
         source: "lucide",
         limit: 30,
-        format: "react",
         output: "./src/icons/navigation"
       }
     ]
@@ -803,32 +838,44 @@ async function fetchIconsByRefs(refs, defaultSource, options = { useCache: true 
   const { icons, missing } = matchIconRefs(refs, candidates, defaultSource);
   return { icons, missing };
 }
+var IMPORT_EXTENSIONS = ["", ".tsx", ".ts", ".jsx", ".js", ".vue", ".svelte"];
+function importTargetExists(directory, relative) {
+  return IMPORT_EXTENSIONS.some((ext) => {
+    const candidate = join(directory, relative + ext);
+    return existsSync(candidate) && statSync(candidate).isFile();
+  });
+}
+function outputIsDirectory(path) {
+  const full = resolve(process.cwd(), path);
+  if (existsSync(full)) return statSync(full).isDirectory();
+  return isDirectoryPath(path);
+}
+function iconFetchers(useCache = true) {
+  return {
+    byRefs: (refs, defaultSource) => fetchIconsByRefs(refs, defaultSource, { useCache }),
+    search: async (params) => (await fetchIcons(params, { useCache })).icons
+  };
+}
 function writeGeneratedFiles(directory, files) {
   const fullDir = resolve(process.cwd(), directory);
   mkdirSync(fullDir, { recursive: true });
   for (const file of files) {
     const target = resolve(fullDir, file.path);
     if (!target.startsWith(fullDir + sep)) throw new Error(`Refusing to write outside ${directory}: ${file.path}`);
-    const content = file.path === "index.ts" && existsSync(target) ? mergeIndexFile(readFileSync(target, "utf-8"), file.content) : file.content;
+    const content = file.path === "index.ts" && existsSync(target) ? mergeIndexFile(readFileSync(target, "utf-8"), file.content, (relative) => importTargetExists(fullDir, relative)) : file.content;
     writeFileSync(target, content, "utf-8");
   }
 }
 function writeIconSet(icons, format, output, options = {}) {
-  if (isDirectoryPath(output)) {
-    const files = generateSplitFiles(icons, format);
-    if (!options.dryRun) writeGeneratedFiles(output, files);
-    return `${output.replace(/[\\/]+$/, "")}/ (${files.length} files)`;
-  }
-  if (COMPONENT_FORMATS.has(format) && format !== "react") {
-    const suggestion = output.replace(/\.[a-zA-Z0-9]+$/, "");
-    throw new Error(`${format} needs one component per file, so the output must be a directory. Use "${suggestion}" instead of "${output}".`);
-  }
-  if (!options.dryRun) {
-    const fullPath = resolve(process.cwd(), output);
-    mkdirSync(dirname(fullPath), { recursive: true });
-    writeFileSync(fullPath, generateSingleFile(icons, format), "utf-8");
-  }
-  return output;
+  const asDirectory = outputIsDirectory(output);
+  const { directory, files } = planIconSet(icons, format, output, asDirectory);
+  if (!options.dryRun) writeGeneratedFiles(directory, files);
+  return asDirectory ? `${directory}/ (${files.length} files)` : output;
+}
+function clipboardCode(icons, format) {
+  if (format !== "vue" && format !== "svelte") return generateSingleFile(icons, format);
+  return generateSplitFiles(icons, format).filter((file) => file.path !== "index.ts").map((file) => icons.length > 1 ? `<!-- ${file.path} -->
+${file.content}` : file.content).join("\n");
 }
 function parseFormat(value) {
   if (value === void 0) return void 0;
@@ -840,7 +887,7 @@ function parseIconList(value) {
   return value.split(/[\s,]+/).map((ref) => ref.trim()).filter(Boolean);
 }
 async function syncBundle(bundle, options = {}) {
-  if (!bundle.icons?.length && !bundle.query && !bundle.category && !bundle.source) {
+  if (!hasSelection(bundle)) {
     return { skipped: "no icons, query, category, or source specified" };
   }
   let format;
@@ -851,19 +898,7 @@ async function syncBundle(bundle, options = {}) {
   } else {
     throw new Error(`unknown format "${String(bundle.format)}"`);
   }
-  let icons = [];
-  let missing = [];
-  if (bundle.icons?.length) {
-    ({ icons, missing } = await fetchIconsByRefs(bundle.icons, bundle.source, { useCache: options.useCache ?? true }));
-  }
-  if (bundle.query || bundle.category || !bundle.icons?.length && bundle.source) {
-    const { icons: found } = await fetchIcons(
-      { query: bundle.query, category: bundle.category, source: bundle.source, limit: bundle.limit || 100 },
-      { useCache: options.useCache ?? true }
-    );
-    const seen = new Set(icons.map((icon) => icon.id));
-    icons.push(...found.filter((icon) => !seen.has(icon.id)));
-  }
+  const { icons, missing } = await resolveBundleIcons(bundle, iconFetchers(options.useCache ?? true));
   if (icons.length === 0) return { skipped: missing.length ? `not found: ${missing.join(", ")}` : "no icons found" };
   const written = writeIconSet(icons, format, bundle.output, { dryRun: options.dryRun ?? false });
   return { count: icons.length, written, missing };
@@ -931,7 +966,7 @@ program.command("search <query>").description("Search for icons by name or keywo
       const action = await p.select({
         message: "What would you like to do?",
         options: [
-          { value: "copy", label: "Copy to clipboard", hint: "Copy React component(s)" },
+          { value: "copy", label: "Copy to clipboard", hint: "Copy component code for this project" },
           { value: "save", label: "Save to file", hint: "Write to disk" },
           { value: "star", label: "Add to favorites", hint: "Star for later" },
           { value: "bundle", label: "Create bundle", hint: "Add to .uniconrc.json" }
@@ -945,7 +980,7 @@ program.command("search <query>").description("Search for icons by name or keywo
       const format = getFormatForFramework(framework);
       switch (action) {
         case "copy": {
-          const content = generateSingleFile(selectedIcons, "react");
+          const content = clipboardCode(selectedIcons, format);
           const success = await copyToClipboard(content);
           if (success) {
             console.log(chalk.green(`\u2713 ${selectedIcons.length} icon(s) copied to clipboard`));
@@ -1093,7 +1128,7 @@ program.command("get <name>").description("Get one icon by exact name (outputs t
         process.exit(1);
       }
     } else if (options.output) {
-      const output = isDirectoryPath(options.output) ? join(options.output, `${toSafeFileName(icon.normalizedName)}.${FILE_EXTENSIONS[format]}`) : options.output;
+      const output = outputIsDirectory(options.output) ? join(options.output, `${toSafeFileName(icon.normalizedName)}.${FILE_EXTENSIONS[format]}`) : options.output;
       const fullPath = resolve(process.cwd(), output);
       mkdirSync(dirname(fullPath), { recursive: true });
       writeFileSync(fullPath, content, "utf-8");
@@ -1132,14 +1167,16 @@ program.command("bundle").description("Write a set of icons: one file per icon i
       console.log(chalk.red(`Error: --single-file is not supported for ${format}. Vue and Svelte need one component per file.`));
       process.exit(1);
     }
-    if (isDirectoryPath(output)) output = join(output, `icons.${FILE_EXTENSIONS[format]}`);
+    if (outputIsDirectory(output)) output = join(output, `icons.${FILE_EXTENSIONS[format]}`);
   }
   const spinner = ora("Fetching icons...").start();
   try {
     let icons;
+    let missing = [];
     if (refs) {
       const result = await fetchIconsByRefs(refs, options.source);
       icons = result.icons;
+      missing = result.missing;
       if (result.missing.length > 0) {
         spinner.warn(chalk.yellow(`Not found: ${result.missing.join(", ")}. Check names with unicon search.`));
         spinner.start("Writing icons...");
@@ -1158,9 +1195,10 @@ program.command("bundle").description("Write a set of icons: one file per icon i
     }
     const written = writeIconSet(icons, format, output);
     spinner.succeed(`${chalk.green(icons.length)} icons \u2192 ${chalk.cyan(written)}`);
+    if (missing.length > 0) process.exitCode = 1;
     const sources = [...new Set(icons.map((i) => i.sourceId))];
     console.log(chalk.dim(`  Sources: ${sources.join(", ")}  Format: ${format}`));
-    if (isDirectoryPath(output) && COMPONENT_FORMATS.has(format)) {
+    if (outputIsDirectory(output) && COMPONENT_FORMATS.has(format)) {
       const importPath = output.replace(/[\\/]+$/, "");
       console.log(chalk.dim(`  Import: import { ${toComponentName(icons[0]?.normalizedName ?? "icon")} } from "${/^\.{0,2}\//.test(importPath) ? importPath : `./${importPath}`}";`));
     } else if (format === "react" && icons.length > 10) {
@@ -1842,7 +1880,10 @@ program.command("bundle:add <bundle> <icons...>").description("Add exact icons (
       return;
     }
     spinner.succeed(`${bundleName}: ${chalk.green(result.count)} icons \u2192 ${chalk.cyan(result.written)}`);
-    if (result.missing.length > 0) console.log(chalk.yellow(`  Not found: ${result.missing.join(", ")}`));
+    if (result.missing.length > 0) {
+      console.log(chalk.red(`  Not found: ${result.missing.join(", ")}. Check the names with unicon search.`));
+      process.exitCode = 1;
+    }
   } catch (error) {
     spinner.fail(`${bundleName}: ${error instanceof Error ? error.message : "Unknown error"}`);
     process.exit(1);
@@ -1892,7 +1933,7 @@ program.command("browse").description("Interactive icon browser with fuzzy searc
     const action = await p.select({
       message: `What would you like to do with ${selectedIcons.length} icon(s)?`,
       options: [
-        { value: "copy", label: "Copy to clipboard", hint: "Copy as React components" },
+        { value: "copy", label: "Copy to clipboard", hint: "Copy component code for this project" },
         { value: "save", label: "Save to files", hint: "Write individual files" },
         { value: "star", label: "Add to favorites", hint: "Star for later use" },
         { value: "preview", label: "Preview ASCII", hint: "Show ASCII art previews" }
@@ -1905,7 +1946,7 @@ program.command("browse").description("Interactive icon browser with fuzzy searc
     detectFramework();
     switch (action) {
       case "copy": {
-        const content = generateSingleFile(selectedIcons, "react");
+        const content = clipboardCode(selectedIcons, getFormatForFramework(detectFramework().framework));
         const success = await copyToClipboard(content);
         p.outro(
           success ? chalk.green(`\u2713 ${selectedIcons.length} icon(s) copied to clipboard`) : chalk.red("Failed to copy to clipboard")

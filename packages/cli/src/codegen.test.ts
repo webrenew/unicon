@@ -10,6 +10,7 @@ import {
   isDirectoryPath,
   matchIconRefs,
   mergeIndexFile,
+  planIconSet,
   toComponentName,
   toJsxBody,
   toSafeFileName,
@@ -65,6 +66,10 @@ describe("toComponentName", () => {
 });
 
 describe("toJsxBody", () => {
+  it("should rename class and namespaced attributes for JSX", () => {
+    expect(toJsxBody('<use class="a" xlink:href="#x" xml:space="preserve"/>')).toBe('<use className="a" xlinkHref="#x" xmlSpace="preserve"/>');
+  });
+
   it("should camelCase hyphenated SVG attributes but keep data and aria attributes", () => {
     expect(toJsxBody('<path fill-rule="evenodd" data-x="1" aria-label="a" stroke-linecap="round"/>')).toBe(
       '<path fillRule="evenodd" data-x="1" aria-label="a" strokeLinecap="round"/>'
@@ -223,5 +228,37 @@ describe("toSafeFileName", () => {
   it("should keep generated paths inside the output directory", () => {
     const evil: CodegenIcon = { ...lucideHome, normalizedName: "../../outside", sourceId: "../x" };
     for (const file of generateSplitFiles([evil, evil], "svg")) expect(file.path).toMatch(/^[a-z0-9-]+\.svg$/);
+  });
+});
+
+describe("mergeIndexFile pruning", () => {
+  it("should drop exports whose file no longer exists", () => {
+    const existing = 'export { Check } from "./check";\nexport { Settings } from "./settings";\n';
+    const merged = mergeIndexFile(existing, 'export { Home } from "./home";\n', (target) => target !== "./settings");
+    expect(merged).toBe('export { Check } from "./check";\nexport { Home } from "./home";\n');
+  });
+});
+
+describe("planIconSet", () => {
+  it("should write one file per icon plus an index into a directory", () => {
+    const plan = planIconSet([lucideHome, githubLogo], "react", "src/icons/", true);
+    expect(plan.directory).toBe("src/icons");
+    expect(plan.files.map((file) => file.path)).toEqual(["home.tsx", "github.tsx", "index.ts"]);
+  });
+
+  it("should write every icon into one file for a file path", () => {
+    const plan = planIconSet([lucideHome, githubLogo], "svg", "public/icons.svg", false);
+    expect(plan.directory).toBe("public");
+    expect(plan.files).toHaveLength(1);
+    expect(plan.files[0]?.path).toBe("icons.svg");
+    expect(plan.files[0]?.content).toContain("<symbol id=\"github\"");
+  });
+
+  it("should put a bare file name in the current directory", () => {
+    expect(planIconSet([lucideHome], "json", "icons.json", false).directory).toBe(".");
+  });
+
+  it("should refuse a file path for Vue and suggest a directory", () => {
+    expect(() => planIconSet([lucideHome], "vue", "components/icons/header.vue", false)).toThrow(/Use "components\/icons\/header"/);
   });
 });
