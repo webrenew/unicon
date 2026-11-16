@@ -1,0 +1,4 @@
+{ "name": "marketing-site", "private": true,
+  "scripts": { "dev": "next dev", "build": "next build" },
+  "dependencies": { "next": "16.4.6", "react": "19.2.0", "react-dom": "19.2.0", "tailwindcss": "^4.1.0" },
+  "devDependencies": { "typescript": "^5.9.0", "@types/react": "^19.2.0" } }

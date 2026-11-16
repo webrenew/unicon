@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: mcp-team-setup
+expected_outcome: |
+  A project-scoped .mcp.json configures the unicon server (remote https://unicon.sh/api/mcp or the npx server), SETUP.md explains how to authenticate for saved bundles without committing a token, and includes a way to verify the connection.

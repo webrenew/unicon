@@ -7,6 +7,20 @@ import { DocsPageNav, getDocsNavLinks } from "@/components/docs-page-nav";
 import { CopyPageButton } from "@/components/copy-page-button";
 import { CodeBlock } from "@/components/ui/code-block";
 
+/** Assistants supported by `unicon skill --ide <id>`; keep in sync with IDE_CONFIGS in packages/cli. */
+const SUPPORTED_ASSISTANTS = [
+  { id: "claude", name: "Claude Code", dir: ".claude/skills/unicon/" },
+  { id: "codex", name: "Codex", dir: ".codex/skills/unicon/" },
+  { id: "cursor", name: "Cursor", dir: ".cursor/skills/unicon/" },
+  { id: "agents", name: "Agents (generic)", dir: ".agents/skills/unicon/" },
+  { id: "windsurf", name: "Windsurf", dir: ".windsurf/skills/unicon/" },
+  { id: "opencode", name: "OpenCode", dir: ".opencode/skills/unicon/" },
+  { id: "gemini", name: "Gemini CLI", dir: ".gemini/skills/unicon/" },
+] as const;
+
+const ASSISTANT_IDS = SUPPORTED_ASSISTANTS.map((assistant) => assistant.id).join(", ");
+const SKILL_FILES = "SKILL.md, references/";
+
 const PAGE_MARKDOWN = `# Unicon Skills Registry
 
 Download Unicon skills for AI assistants. Install once and let your assistant generate icons on demand.
@@ -29,7 +43,7 @@ unicon skill [options]
 
 | Flag | Description |
 |------|-------------|
-| \`--ide <name>\` | Target IDE: claude, cursor, windsurf, agent, antigravity, opencode, codex, aider |
+| \`--ide <name>\` | Target IDE: ${ASSISTANT_IDS} |
 | \`--all\` | Install for all supported IDEs at once |
 | \`-l, --list\` | List all supported IDEs and their config paths |
 | \`-f, --force\` | Overwrite existing skill files |
@@ -84,16 +98,9 @@ Download: https://unicon.sh/skills/unicon-mcp.md
 
 ## Supported IDEs
 
-| IDE | Directory | Filename |
-|-----|-----------|----------|
-| Claude Code | \`.claude/skills/unicon/\` | \`SKILL.md\` |
-| Cursor | \`.cursor/rules/\` | \`unicon.mdc\` |
-| Windsurf | \`.windsurf/rules/\` | \`unicon.md\` |
-| Agent | \`.agent/rules/\` | \`unicon.md\` |
-| Antigravity | \`.antigravity/rules/\` | \`unicon.md\` |
-| OpenCode | \`.opencode/rules/\` | \`unicon.md\` |
-| Codex | \`.codex/\` | \`unicon.md\` |
-| Aider | \`.aider/rules/\` | \`unicon.md\` |
+| IDE | Directory | Files |
+|-----|-----------|-------|
+${SUPPORTED_ASSISTANTS.map((assistant) => `| ${assistant.name} | \`${assistant.dir}\` | ${SKILL_FILES} |`).join("\n")}
 
 ## Direct Downloads
 
@@ -228,7 +235,7 @@ export default function SkillsDocsPage() {
                 <tbody>
                   <tr className="border-b border-border">
                     <td className="py-2 px-3 font-mono text-[var(--accent-aqua)]">--ide &lt;name&gt;</td>
-                    <td className="py-2 px-3 text-muted-foreground">Target IDE: claude, cursor, windsurf, agent, antigravity, opencode, codex, aider</td>
+                    <td className="py-2 px-3 text-muted-foreground">Target IDE: {ASSISTANT_IDS}</td>
                   </tr>
                   <tr className="border-b border-border">
                     <td className="py-2 px-3 font-mono text-[var(--accent-aqua)]">--all</td>
@@ -308,50 +315,20 @@ unicon skills --json                 # List as JSON (for scripts)`}</CodeBlock>
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 font-semibold">IDE</th>
                   <th className="text-left py-3 px-4 font-semibold">Directory</th>
-                  <th className="text-left py-3 px-4 font-semibold">Filename</th>
+                  <th className="text-left py-3 px-4 font-semibold">Files</th>
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-b border-border">
-                  <td className="py-3 px-4">Claude Code</td>
-                  <td className="py-3 px-4 font-mono text-xs text-muted-foreground">.claude/skills/unicon/</td>
-                  <td className="py-3 px-4 font-mono text-xs">SKILL.md</td>
-                </tr>
-                <tr className="border-b border-border">
-                  <td className="py-3 px-4">Cursor</td>
-                  <td className="py-3 px-4 font-mono text-xs text-muted-foreground">.cursor/rules/</td>
-                  <td className="py-3 px-4 font-mono text-xs">unicon.mdc</td>
-                </tr>
-                <tr className="border-b border-border">
-                  <td className="py-3 px-4">Windsurf</td>
-                  <td className="py-3 px-4 font-mono text-xs text-muted-foreground">.windsurf/rules/</td>
-                  <td className="py-3 px-4 font-mono text-xs">unicon.md</td>
-                </tr>
-                <tr className="border-b border-border">
-                  <td className="py-3 px-4">Agent</td>
-                  <td className="py-3 px-4 font-mono text-xs text-muted-foreground">.agent/rules/</td>
-                  <td className="py-3 px-4 font-mono text-xs">unicon.md</td>
-                </tr>
-                <tr className="border-b border-border">
-                  <td className="py-3 px-4">Antigravity</td>
-                  <td className="py-3 px-4 font-mono text-xs text-muted-foreground">.antigravity/rules/</td>
-                  <td className="py-3 px-4 font-mono text-xs">unicon.md</td>
-                </tr>
-                <tr className="border-b border-border">
-                  <td className="py-3 px-4">OpenCode</td>
-                  <td className="py-3 px-4 font-mono text-xs text-muted-foreground">.opencode/rules/</td>
-                  <td className="py-3 px-4 font-mono text-xs">unicon.md</td>
-                </tr>
-                <tr className="border-b border-border">
-                  <td className="py-3 px-4">Codex</td>
-                  <td className="py-3 px-4 font-mono text-xs text-muted-foreground">.codex/</td>
-                  <td className="py-3 px-4 font-mono text-xs">unicon.md</td>
-                </tr>
-                <tr>
-                  <td className="py-3 px-4">Aider</td>
-                  <td className="py-3 px-4 font-mono text-xs text-muted-foreground">.aider/rules/</td>
-                  <td className="py-3 px-4 font-mono text-xs">unicon.md</td>
-                </tr>
+                {SUPPORTED_ASSISTANTS.map((assistant, index) => (
+                  <tr
+                    key={assistant.id}
+                    className={index < SUPPORTED_ASSISTANTS.length - 1 ? "border-b border-border" : undefined}
+                  >
+                    <td className="py-3 px-4">{assistant.name}</td>
+                    <td className="py-3 px-4 font-mono text-xs text-muted-foreground">{assistant.dir}</td>
+                    <td className="py-3 px-4 font-mono text-xs">{SKILL_FILES}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

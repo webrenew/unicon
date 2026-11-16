@@ -13,6 +13,20 @@ import { createInterface } from "readline";
 import * as p from "@clack/prompts";
 import clipboard from "clipboardy";
 import chokidar from "chokidar";
+
+// ../../skills/unicon/SKILL.md
+var SKILL_default = '---\nname: unicon\ndescription: Adds icons to web projects with Unicon, which generates zero-dependency icon code from 19,000+ icons in Lucide, Phosphor, Hugeicons, Heroicons, Tabler, Feather, Remix, Iconoir, and Simple Icons (brand logos). Searches icons semantically, then writes React, Vue, Svelte, SVG, or JSON into the project with the `unicon` CLI (`npx @webrenew/unicon`) or the unicon.sh REST API. Use this skill whenever the user wants to add, find, replace, or bundle icons or brand logos in a React, Next.js, Vue, Nuxt, Svelte, or HTML project, mentions Unicon, `.uniconrc.json`, or `unicon` commands, or wants icons without adding a package such as lucide-react or react-icons, even if they only say "put a settings icon here" or "I need the GitHub logo". When Unicon MCP tools are connected, see the unicon-mcp skill.\nlicense: MIT\ncompatibility: Requires Node.js 18+ for the CLI and network access to https://unicon.sh.\nmetadata:\n  author: webrenew\n  version: "0.3.0"\n  website: https://unicon.sh\n  repository: https://github.com/WebRenew/unicon\n  openclaw:\n    emoji: "\u{1F984}"\n    requires:\n      bins: ["node"]\n    install:\n      - type: node\n        package: "@webrenew/unicon"\n        global: true\n---\n\n# Unicon\n\nUnicon writes icon source code into the project instead of adding an icon\npackage. Each icon becomes a small component, SVG file, or JSON object that the\nproject owns. Only the icons in use ship, and there is no dependency to install\nor upgrade.\n\nRun the CLI with `npx @webrenew/unicon <command>`. If it is installed globally\n(`npm install -g @webrenew/unicon`), use `unicon <command>`. Every command\ncalls https://unicon.sh, so it needs network access.\n\nRun `npx` commands one at a time, not in parallel. Parallel `npx` runs share\nthe npm cache, and the first run can fail with `EEXIST` or a missing module\nwhile the package downloads. If that happens, run the command again.\n\n## Choose an approach\n\n| The user wants | Use |\n|----------------|-----|\n| One icon, or a few specific icons | `unicon get <name>`, once per icon |\n| A themed set of icons (navigation, social, ...) | `unicon bundle --query ... -o <dir>` |\n| A set the team regenerates later | `.uniconrc.json` and `unicon sync` |\n| Icons fetched from code, or no Node.js | The REST API, see [api-reference.md](references/api-reference.md) |\n| Unicon MCP tools are connected | The MCP tools, see the unicon-mcp skill |\n\n## Workflow\n\n### 1. Match the project\n\nRead `package.json` and look at the icons the project already uses before you\nadd new ones. Icon libraries differ in stroke width, corner style, and grid,\nso icons from two libraries side by side look inconsistent. If the project\nalready uses one style, keep to its library with `--source`. For example, a\nshadcn/ui project uses Lucide, so use `--source lucide`. Use `simple-icons`\nfor brand logos.\n\n### 2. Search, then use exact names\n\n```bash\nnpx @webrenew/unicon search "log out" --source lucide --limit 10 --json\n```\n\nSearch is semantic, so describe the concept ("sign out", "delete") instead of\nguessing a file name. Results identify icons as `source:name`, for example\n`lucide:log-out`. The same name exists in several libraries, so pass the\nsame `--source` to `get` or `bundle` to get the icon you picked. Use `--json`\nwhen you read the results yourself, because the default output is formatted\nfor people.\n\n### 3. Generate the code\n\n**Specific icons:** use `get` for each icon. This gives an exact set:\n\n```bash\nnpx @webrenew/unicon get log-out --source lucide -o src/components/icons/log-out.tsx\nnpx @webrenew/unicon get settings --source lucide -o src/components/icons/settings.tsx\n```\n\n`get` takes the name part of the ID (`log-out`, not `lucide:log-out`). It\nsearches for that name and uses an exact match. If there is no exact match,\nit silently uses the closest result, which can be a different icon. Copy names\nfrom the `search` output, and check the component name in the generated file.\n\nWithout `-o`, the code goes to stdout. The format follows the framework in\n`package.json`: `react`, `next`, or `@remix-run/react` give `react`; `vue`\nor `nuxt` give `vue`; `svelte` or `@sveltejs/kit` give `svelte`. Otherwise\nthe format is `react`. Pass `--format react|vue|svelte|svg|json` to choose\nthe format yourself.\n\n**A themed set:** use `bundle` into a directory:\n\n```bash\nnpx @webrenew/unicon bundle --query "arrows chevrons" --source lucide --limit 20 -o src/components/icons\n```\n\nFor `react`, `vue`, and `svelte`, this writes one file per icon and an\n`index.ts` that re-exports them, so bundlers remove the icons the app does not\nimport. For `svg` and `json`, it writes one file at `-o` instead. For\nindividual `.svg` files, use `get --format svg` for each icon. A query returns up to\n`--limit` matches (default 100), and some can be loosely related. Run the\nsame `search` first and set `--limit` to the number of matches you want.\n`--single-file` writes one file instead (React, SVG, or JSON only), and that\nfile is not tree-shakeable.\n\n**A repeatable set:** use the config file:\n\n```bash\nnpx @webrenew/unicon add nav --query "arrow chevron menu" --source lucide --limit 20\nnpx @webrenew/unicon sync\n```\n\n`add` creates an entry in `.uniconrc.json`. `sync` writes each entry to one\nfile, by default `./src/icons/<name>.tsx`. Config entries select icons by\nsearch query, not by exact name, so check the result after `sync`. `sync`\ngenerates React or JSON only. In a Vue or Svelte project it writes React\ncode, so use `bundle` or `get` there. Read\n[config-file.md](references/config-file.md) before you edit the config by\nhand.\n\n### 4. Use the icons and verify\n\nGenerated React components look like this:\n\n```tsx\nexport function LogOut({ className, ...props }: SVGProps<SVGSVGElement>) {\n  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" /* ... */ className={className} {...props} />;\n}\n```\n\n- Components use `currentColor`, so set the color with CSS or text classes.\n- Components have no fixed size. Set the size with `className`, for example\n  `className="size-4"`, or with `width` and `height`.\n- Components are `aria-hidden`. Next to an icon-only button, add an\n  `aria-label` to the button.\n- Simple Icons logos are fill-based and include the brand color in the API\n  data (`brandColor`).\n\nImport from the generated path, then run the project\'s typecheck or build to\nconfirm that the imports resolve.\n\n## Commands that need a terminal\n\n`search --pick`, `init --interactive`, and `browse` wait for keyboard input.\nThey stop an agent that runs commands without a terminal. Use the\nnon-interactive flags shown above instead. `--copy` copies to the clipboard,\nwhich is useful for a person, not for an agent.\n\n## Libraries\n\n| Source | Icons | Notes |\n|--------|-------|-------|\n| `lucide` | 1,900+ | Stroke icons, the shadcn/ui default |\n| `phosphor` | 1,500+ | |\n| `hugeicons` | 1,800+ | |\n| `heroicons` | 640+ | Tailwind Labs |\n| `tabler` | 4,900+ | Stroke icons, largest set |\n| `feather` | 280+ | Lucide\'s predecessor |\n| `remix` | 3,100+ | |\n| `iconoir` | 1,600+ | |\n| `simple-icons` | 3,300+ | Brand logos |\n\n`npx @webrenew/unicon sources` prints the current list.\n\n## References\n\n- [cli-commands.md](references/cli-commands.md): every command and flag.\n  Read it for options not shown here, or for `audit`, `compare`, `stars`,\n  `login`, `bundles`, and `bundle:pull`.\n- [config-file.md](references/config-file.md): the `.uniconrc.json` fields.\n  Read it before you write or edit the config by hand.\n- [api-reference.md](references/api-reference.md): REST endpoints,\n  parameters, the response format, and rate limits. Read it when code calls\n  unicon.sh directly or when the CLI is not available.\n';
+
+// ../../skills/unicon/references/cli-commands.md
+var cli_commands_default = '# CLI Commands Reference\n\nEvery command and option in the Unicon CLI (`@webrenew/unicon` 0.3.x).\n\nRun commands with `npx @webrenew/unicon <command>`, or with `unicon <command>`\nafter `npm install -g @webrenew/unicon`.\n\nCommands marked **(interactive)** wait for keyboard input. Do not run them\nfrom an agent without a terminal.\n\n## Contents\n\n- Find icons: [search](#unicon-search-query), [info](#unicon-info-name),\n  [preview](#unicon-preview-name), [compare](#unicon-compare-concept),\n  [browse](#unicon-browse), [sources](#unicon-sources),\n  [categories](#unicon-categories)\n- Generate code: [get](#unicon-get-name), [bundle](#unicon-bundle)\n- Config file: [init](#unicon-init), [add](#unicon-add-name),\n  [bundle:add](#unicon-bundleadd-bundle-icons), [sync](#unicon-sync),\n  [audit](#unicon-audit)\n- Favorites: [star](#unicon-star-name), [unstar](#unicon-unstar-name),\n  [stars](#unicon-stars)\n- Saved bundles from unicon.sh: [login](#unicon-login),\n  [logout](#unicon-logout), [whoami](#unicon-whoami),\n  [bundles](#unicon-bundles), [bundle:pull](#unicon-bundlepull-bundleid)\n- Assistant skills: [skill](#unicon-skill), [skills](#unicon-skills)\n- Other: [cache](#unicon-cache), [global options](#global-options),\n  [environment variables](#environment-variables),\n  [framework detection](#framework-detection)\n\n---\n\n## Find icons\n\n### `unicon search <query>`\n\nSemantic search: describe the concept, not the file name.\n\n| Option | Description | Default |\n|--------|-------------|---------|\n| `-s, --source <source>` | Filter by library | all |\n| `-c, --category <category>` | Filter by category | all |\n| `-l, --limit <number>` | Maximum results | 20 |\n| `-j, --json` | Output JSON (use when a program reads the output) | off |\n| `-p, --pick` | **(interactive)** Select results, then copy, save, star, or add them to a bundle | off |\n\n```bash\nunicon search "dashboard"\nunicon search "arrow" --source lucide --limit 10 --json\n```\n\n### `unicon info <name>`\n\nShow an icon\'s library, category, viewBox, tags, and example commands.\n\n| Option | Description |\n|--------|-------------|\n| `-s, --source <source>` | Prefer this library |\n\n### `unicon preview <name>`\n\nDraw an icon as ASCII art in the terminal.\n\n| Option | Description | Default |\n|--------|-------------|---------|\n| `-s, --source <source>` | Prefer this library | |\n| `-w, --width <number>` | Width in characters | 20 |\n| `-h, --height <number>` | Height in characters | 20 |\n\n### `unicon compare <concept>`\n\nShow the same concept (for example `home`) from each library side by side, to\nhelp choose a library.\n\n| Option | Description | Default |\n|--------|-------------|---------|\n| `-w, --width <number>` | Preview width | 16 |\n| `-h, --height <number>` | Preview height | 10 |\n\n### `unicon browse`\n\n**(interactive)** Browse icons with fuzzy search.\n\n| Option | Description |\n|--------|-------------|\n| `-s, --source <source>` | Filter by library |\n| `-c, --category <category>` | Filter by category |\n\n### `unicon sources`\n\nList the icon libraries.\n\n### `unicon categories`\n\nList the icon categories. `-j, --json` outputs JSON.\n\n---\n\n## Generate code\n\n### `unicon get <name>`\n\nWrite one icon to stdout, a file, or the clipboard.\n\n`name` is the icon name without the library prefix (`log-out`, not\n`lucide:log-out`). The CLI searches for the name and uses an exact match. If\nthere is no exact match, it uses the closest result, which can be a different\nicon. Use names from `search` output.\n\n| Option | Description | Default |\n|--------|-------------|---------|\n| `-s, --source <source>` | Prefer this library | any |\n| `-f, --format <format>` | `react`, `vue`, `svelte`, `svg`, `json` | from `package.json` |\n| `-o, --output <path>` | Write to this file | stdout |\n| `-c, --copy` | Copy to the clipboard | off |\n\n```bash\nunicon get settings --source lucide -o src/components/icons/settings.tsx\nunicon get home --format vue -o src/components/icons/Home.vue\n```\n\n### `unicon bundle`\n\nWrite many icons at once, selected by query, category, library, or favorites.\n\n| Option | Description | Default |\n|--------|-------------|---------|\n| `-q, --query <query>` | Search query | |\n| `-c, --category <category>` | Category filter | |\n| `-s, --source <source>` | Library filter | all |\n| `-f, --format <format>` | `react`, `vue`, `svelte`, `svg`, `json` | from `package.json` |\n| `-o, --output <path>` | Output directory for components; output file for `svg`, `json`, or `--single-file` | `./icons` or `icons.<ext>` |\n| `-l, --limit <number>` | Maximum icons | 100 |\n| `--single-file` | Put every icon in one file. Not tree-shakeable, and not available for `vue` or `svelte` | off |\n| `--stars` | Bundle the favorited icons | off |\n\nFor component formats (`react`, `vue`, `svelte`), `bundle` writes one file\nper icon and an `index.ts` that re-exports them, so bundlers remove unused\nicons. For `svg` and `json` it writes one file: `svg` puts every icon in it\nas a separate `<svg>` element, which is not a valid standalone SVG. For\nindividual `.svg` files, run `unicon get <name> --format svg -o <file>.svg`\nfor each icon.\n\n```bash\nunicon bundle --query "social media" --source simple-icons -o src/components/icons/social\nunicon bundle --category Arrows --source lucide --limit 30 -o src/components/icons/arrows\nunicon bundle --stars -o src/components/icons/favorites\nunicon bundle --query "logos" --format json -o src/data/logos.json\n```\n\n---\n\n## Config file\n\nSee [config-file.md](config-file.md) for the file format.\n\n### `unicon init`\n\nCreate `.uniconrc.json` in the current directory.\n\n| Option | Description |\n|--------|-------------|\n| `-f, --force` | Overwrite an existing config |\n| `-i, --interactive` | **(interactive)** Choose the framework, library, output directory, and a first bundle |\n\n### `unicon add <name>`\n\nAdd a bundle entry to `.uniconrc.json`, creating the file if needed. It does\nnot generate code; run `unicon sync` afterwards.\n\n| Option | Description | Default |\n|--------|-------------|---------|\n| `-q, --query <query>` | Search query | |\n| `-c, --category <category>` | Category filter | |\n| `-s, --source <source>` | Library filter | all |\n| `-f, --format <format>` | `react`, `svg`, or `json` | `react` |\n| `-l, --limit <number>` | Maximum icons | 50 |\n| `-o, --output <path>` | Output file | `./src/icons/<name>.<ext>` |\n\n```bash\nunicon add nav --query "arrow chevron menu" --source lucide --limit 20\nunicon add social --category Social --source simple-icons\n```\n\n### `unicon bundle:add <bundle> <icons...>`\n\nAppend names to an existing bundle\'s `query`, then sync that bundle. Bundles\nselect icons by search, so check the result.\n\n```bash\nunicon bundle:add nav home settings\n```\n\n### `unicon sync`\n\nGenerate the code for each bundle in `.uniconrc.json`. Each bundle is written\nto one file at its `output` path. `sync` generates React or JSON only: `vue`\nand `svelte` bundles get React code, and `svg` bundles get several `<svg>`\nelements in one file. Use `unicon bundle` for Vue or Svelte components, and\n`unicon get` for individual `.svg` files.\n\n| Option | Description |\n|--------|-------------|\n| `-n, --name <name>` | Sync only this bundle |\n| `-d, --dry-run` | Show what would be written, without writing |\n| `-w, --watch` | Sync again when the config changes (runs until stopped) |\n\n### `unicon audit`\n\nCompare the bundled icons with the icons the code imports. It reports unused\nicons (bundled but not imported) and missing icons (imported but not bundled).\n\n| Option | Description |\n|--------|-------------|\n| `-j, --json` | Output JSON |\n| `-v, --verbose` | Show the file locations for each icon |\n\n---\n\n## Favorites\n\nFavorites are stored locally in `~/.unicon`.\n\n### `unicon star <name>`\n\nAdd an icon to favorites. `-s, --source <source>` prefers a library.\n\n### `unicon unstar <name>`\n\nRemove an icon from favorites.\n\n### `unicon stars`\n\nList favorites. `-j, --json` outputs JSON. Use `unicon bundle --stars` to\ngenerate them.\n\n---\n\n## Saved bundles from unicon.sh\n\nBundles saved on https://unicon.sh/bundles can be pulled into a project.\n\n### `unicon login`\n\nSign in with a device code in the browser. Credentials are saved to\n`~/.unicon/auth.json`. Set `UNICON_API_TOKEN` instead in CI.\n\n### `unicon logout`\n\nRemove the saved credentials.\n\n### `unicon whoami`\n\nShow whether the CLI is signed in.\n\n### `unicon bundles`\n\nList your saved bundles (requires login). `-j, --json` outputs JSON.\n\n### `unicon bundle:pull <bundleId>`\n\nWrite a saved bundle into the project (requires login).\n\n| Option | Description | Default |\n|--------|-------------|---------|\n| `-o, --output <path>` | Output file | `src/components/icons/bundle.tsx` |\n| `-f, --format <format>` | `react`, `svg`, or `json` | `react` |\n\n---\n\n## Assistant skills\n\n### `unicon skill`\n\nInstall the Unicon skill (`SKILL.md` and its references) into a project for\ncoding assistants.\n\n| Option | Description |\n|--------|-------------|\n| `--ide <ide>` | `claude`, `codex`, `cursor`, `agents`, `windsurf`, `opencode`, or `gemini` |\n| `--all` | Install for every supported assistant |\n| `-l, --list` | List the supported assistants and install paths |\n| `-f, --force` | Overwrite existing files |\n| `-y, --yes` | Skip the confirmation prompt |\n\nEach assistant gets `.<ide>/skills/unicon/` (for example\n`.claude/skills/unicon/SKILL.md`). Run `unicon skill --list` for the exact\npaths.\n\n### `unicon skills`\n\nList and download skills from the registry at https://unicon.sh/skills.\n\n| Option | Description |\n|--------|-------------|\n| `-l, --list` | List skills |\n| `-g, --get <id>` | Print a skill (`unicon` or `unicon-mcp`) |\n| `-o, --output <path>` | Write the skill to a file instead |\n| `-j, --json` | Output the list as JSON |\n\n---\n\n## Other\n\n### `unicon cache`\n\nAPI responses are cached in `~/.unicon/cache` for 24 hours.\n\n| Option | Description |\n|--------|-------------|\n| `-s, --stats` | Show cache size and entries |\n| `-c, --clear` | Delete the cache |\n\n### Global options\n\n| Option | Description |\n|--------|-------------|\n| `-h, --help` | Show help for the CLI or a command |\n| `-V, --version` | Show the version |\n\n### Environment variables\n\n| Variable | Description |\n|----------|-------------|\n| `UNICON_API_URL` | API base URL (default `https://unicon.sh`), for a self-hosted Unicon |\n| `UNICON_API_TOKEN` | API token for saved bundles, used instead of `unicon login` |\n\n### Framework detection\n\nWhen no `--format` is given, the CLI reads `package.json` dependencies:\n\n| Dependencies | Format |\n|--------------|--------|\n| `react`, `next`, `@remix-run/react` | `react` |\n| `vue`, `nuxt`, `@nuxt/kit` | `vue` |\n| `svelte`, `@sveltejs/kit` | `svelte` |\n| none of these | `react` |\n';
+
+// ../../skills/unicon/references/config-file.md
+var config_file_default = '# `.uniconrc.json` Reference\n\n`.uniconrc.json` lists icon bundles for `unicon sync` to generate. Put it in\nthe project root, next to `package.json`, and commit it together with the\ngenerated files so the team can regenerate the same icons.\n\n## Format\n\n```json\n{\n  "$schema": "https://unicon.sh/schema/uniconrc.json",\n  "bundles": [\n    {\n      "name": "nav",\n      "query": "arrow chevron menu",\n      "source": "lucide",\n      "limit": 20,\n      "format": "react",\n      "output": "./src/icons/nav.tsx"\n    }\n  ]\n}\n```\n\nThe CLI reads only these fields. It ignores any other field, so a setting\nsuch as `outputDir` or `strokeWidth` has no effect.\n\n### Root\n\n| Field | Type | Description |\n|-------|------|-------------|\n| `$schema` | string | Optional. Written by `unicon init` |\n| `bundles` | array | The bundles to generate |\n\n### Bundle\n\n| Field | Type | Required | Description |\n|-------|------|----------|-------------|\n| `name` | string | yes | Unique bundle name, used by `sync --name` and `bundle:add` |\n| `output` | string | yes | File to write, relative to the project root |\n| `query` | string | one of `query`, `category`, `source` | Semantic search query |\n| `category` | string | one of `query`, `category`, `source` | Category filter, for example `Arrows` |\n| `source` | string | one of `query`, `category`, `source` | Library: `lucide`, `phosphor`, `hugeicons`, `heroicons`, `tabler`, `feather`, `remix`, `iconoir`, `simple-icons` |\n| `format` | string | no | `react` (default) or `json`. See [Formats](#formats) before using `svg`, `vue`, or `svelte` |\n| `limit` | number | no | Maximum icons. Default 100 |\n\n`sync` skips a bundle that has none of `query`, `category`, or `source`.\n\n## How selection works\n\nA bundle selects icons by search, not by a list of names. `sync` searches with\nthe bundle\'s `query`, `category`, and `source`, and takes the first `limit`\nresults. This has two consequences:\n\n- The set can include loosely related icons, or miss one you expected. Run\n  `unicon search "<query>" --source <lib> --limit <n>` to see what the bundle\n  will contain, and adjust the query or `limit`.\n- `unicon bundle:add <bundle> <names...>` appends the names to `query`. It\n  does not pin exact icons.\n\nTo control the exact icons, generate them with `unicon get` instead (see\n[cli-commands.md](cli-commands.md)).\n\n## Output\n\n`sync` writes each bundle to one file at `output`. A React bundle is one\n`.tsx` file that exports one component per icon:\n\n```ts\nimport { ArrowRight, Menu } from "./src/icons/nav";\n```\n\nFor one file per icon, use `unicon bundle -o <directory>` instead of the\nconfig file.\n\n## Formats\n\n`sync` generates only two formats correctly:\n\n| `format` | Result |\n|----------|--------|\n| `react` | One `.tsx` file with one component per icon |\n| `json` | One `.json` file with the icon data |\n| `svg` | All icons as separate `<svg>` elements in one file. This is not a valid standalone SVG; use it only to paste markup |\n| `vue`, `svelte` | React (TSX) code. `sync` has no Vue or Svelte generator |\n\nWithout `format`, `sync` uses the framework in `package.json`. In a Vue or\nSvelte project it therefore writes React code. Use the CLI commands instead\nof the config file:\n\n```bash\n# Vue or Svelte components: one file per icon\nunicon bundle --query "home settings user search" --source lucide --format vue -o src/components/icons\n\n# Individual .svg files: one get per icon\nunicon get github --source simple-icons --format svg -o public/icons/github.svg\n```\n\n## Examples\n\n### Several bundles\n\n```json\n{\n  "bundles": [\n    {\n      "name": "nav",\n      "query": "arrow chevron menu",\n      "source": "lucide",\n      "limit": 20,\n      "output": "./src/components/icons/nav.tsx"\n    },\n    {\n      "name": "social",\n      "category": "Social",\n      "source": "simple-icons",\n      "limit": 30,\n      "output": "./src/components/icons/social.tsx"\n    }\n  ]\n}\n```\n\n## Workflow\n\n1. `unicon init` creates the file. `unicon add <name> --query ...` adds a\n   bundle.\n2. `unicon sync --dry-run` shows what each bundle would contain.\n3. `unicon sync` writes the files. `unicon sync --watch` writes them again\n   when the config changes.\n4. `unicon audit` finds icons that are bundled but unused, or imported but not\n   bundled.\n';
+
+// ../../skills/unicon/references/api-reference.md
+var api_reference_default = '# API Reference\n\nThe REST API returns icon data for code that calls unicon.sh directly. No\nauthentication is needed for these endpoints.\n\n**Base URL**: `https://unicon.sh/api`\n\n**Rate limit**: 60 requests per minute per IP address, shared across these\nendpoints. Over the limit, the API returns `429` with `Retry-After` and\n`X-RateLimit-*` headers. Cache results instead of searching on every\nkeystroke.\n\n---\n\n## GET /api/icons\n\nFetch icons with optional filters. Supports AI-powered semantic search.\nAllows cross-origin requests (`Access-Control-Allow-Origin: *`).\n\n### Parameters\n\n| Parameter | Type | Description | Default |\n|-----------|------|-------------|---------|\n| `q` | string | Search query. Semantic search for 3+ characters, text search otherwise | - |\n| `source` | string | Filter by library | all |\n| `category` | string | Filter by category (text search and browsing only) | all |\n| `names` | string | Comma-separated exact normalized names, for example `home,settings`. Returns every library\'s icon with each name | - |\n| `limit` | number | Results per page (max 320) | 100 |\n| `offset` | number | Pagination offset | 0 |\n| `ai` | boolean | `false` uses fast text search instead of semantic search | true |\n\n### Response\n\n```json\n{\n  "icons": [\n    {\n      "id": "lucide:home",\n      "name": "Home",\n      "normalizedName": "home",\n      "sourceId": "lucide",\n      "category": "Buildings",\n      "tags": ["house", "building", "residence"],\n      "viewBox": "0 0 24 24",\n      "content": "<path d=\\"M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\\"/>...",\n      "defaultStroke": true,\n      "defaultFill": false,\n      "strokeWidth": "2",\n      "brandColor": null\n    }\n  ],\n  "hasMore": true,\n  "searchType": "semantic",\n  "expandedQuery": "home house building residence dwelling"\n}\n```\n\nText search and browsing responses also include `total`, the number of\nmatching icons. Semantic responses do not.\n\n### Search Types\n\n| Type | Description |\n|------|-------------|\n| `semantic` | AI-powered vector search with query expansion |\n| `text` | Name and tag matching with aliases (`ai=false`, short queries, or fallback) |\n| `exact` | Exact name match (when using `names` param) |\n\n### Examples\n\n```bash\n# Search with AI\ncurl "https://unicon.sh/api/icons?q=dashboard"\n\n# Filter by source\ncurl "https://unicon.sh/api/icons?q=arrow&source=lucide"\n\n# Get specific icons by name\ncurl "https://unicon.sh/api/icons?names=home,settings,user"\n\n# Browse by category\ncurl "https://unicon.sh/api/icons?category=Social&limit=50"\n\n# Disable AI search\ncurl "https://unicon.sh/api/icons?q=home&ai=false"\n```\n\n---\n\n## POST /api/search\n\nHybrid semantic + exact match search with scoring.\n\n### Request Body\n\n```json\n{\n  "query": "string (required)",\n  "sourceId": "string (optional)",\n  "limit": "number (optional, default 50, max 320)",\n  "offset": "number (optional, default 0)",\n  "useAI": "boolean (optional, default false)"\n}\n```\n\nQueries shorter than 3 characters use text search. `useAI: true` asks Claude\nto expand queries that the built-in synonyms do not cover, with a 2-second\ntime limit.\n\n### Response\n\n```json\n{\n  "results": [\n    {\n      "id": "lucide:home",\n      "name": "Home",\n      "normalizedName": "home",\n      "sourceId": "lucide",\n      "category": "Buildings",\n      "tags": ["house", "building"],\n      "viewBox": "0 0 24 24",\n      "content": "<path ... />",\n      "defaultStroke": true,\n      "defaultFill": false,\n      "strokeWidth": "2",\n      "brandColor": null,\n      "score": 0.95\n    }\n  ],\n  "searchType": "semantic",\n  "expandedQuery": "home house building residence",\n  "hasMore": true\n}\n```\n\n### Score\n\nResults include a `score` (0-1) combining:\n- **Semantic similarity** (60% weight) - Vector distance\n- **Exact match boost** (40% weight) - Name/tag/category matches\n\n### Examples\n\n```bash\n# Basic search\ncurl -X POST "https://unicon.sh/api/search" \\\n  -H "Content-Type: application/json" \\\n  -d \'{"query": "dashboard"}\'\n\n# Filter by source\ncurl -X POST "https://unicon.sh/api/search" \\\n  -H "Content-Type: application/json" \\\n  -d \'{"query": "arrow", "sourceId": "phosphor", "limit": 20}\'\n\n# Enable AI expansion\ncurl -X POST "https://unicon.sh/api/search" \\\n  -H "Content-Type: application/json" \\\n  -d \'{"query": "celebration", "useAI": true}\'\n```\n\n---\n\n## Icon Data Schema\n\n```typescript\ninterface IconData {\n  id: string;              // "lucide:home"\n  name: string;            // "Home" (PascalCase)\n  normalizedName: string;  // "home" (kebab-case)\n  sourceId: string;        // "lucide", "phosphor", etc.\n  category: string | null; // "Buildings", "Arrows", etc.\n  tags: string[];          // ["house", "building"]\n  viewBox: string;         // "0 0 24 24"\n  content: string;         // Raw SVG inner content\n  pathData: { tag: string; attrs: Record<string, string> }[] | null; // Parsed elements (semantic results only)\n  defaultStroke: boolean;  // Uses stroke for rendering\n  defaultFill: boolean;    // Uses fill for rendering\n  strokeWidth: string | null;\n  brandColor: string | null; // Hex color for brand icons\n}\n```\n\n---\n\n## Available Sources\n\n| ID | Name | Icons |\n|----|------|-------|\n| `lucide` | Lucide | 1,900+ |\n| `phosphor` | Phosphor | 1,500+ |\n| `hugeicons` | Huge Icons | 1,800+ |\n| `heroicons` | Heroicons | 640+ |\n| `tabler` | Tabler | 4,900+ |\n| `feather` | Feather | 280+ |\n| `remix` | Remix Icon | 3,100+ |\n| `iconoir` | Iconoir | 1,600+ |\n| `simple-icons` | Simple Icons (brand logos) | 3,300+ |\n\n---\n\n## Caching\n\nResponses are cached at the CDN:\n\n| Request | Cache time |\n|---------|-----------|\n| Browsing, text search, `names` | 1 hour |\n| Semantic search (`GET /api/icons?q=...`) | 30 minutes |\n| `POST /api/search` with an AI-expanded query | 1 minute |\n\nRequests that the CDN answers from its cache never reach the server and do\nnot count toward the rate limit.\n\n---\n\n## Usage in Code\n\n### JavaScript/TypeScript\n\n```typescript\nasync function searchIcons(query: string) {\n  const response = await fetch(\n    `https://unicon.sh/api/icons?q=${encodeURIComponent(query)}`\n  );\n  const { icons } = await response.json();\n  return icons;\n}\n\n// Get specific icons\nasync function getIcons(names: string[]) {\n  const response = await fetch(\n    `https://unicon.sh/api/icons?names=${names.join(",")}`\n  );\n  const { icons } = await response.json();\n  return icons;\n}\n```\n\n### Rendering Icons\n\n```tsx\nfunction Icon({ icon }: { icon: IconData }) {\n  return (\n    <svg\n      viewBox={icon.viewBox}\n      dangerouslySetInnerHTML={{ __html: icon.content }}\n      fill={icon.defaultFill ? "currentColor" : "none"}\n      stroke={icon.defaultStroke ? "currentColor" : "none"}\n      strokeWidth={icon.strokeWidth ?? 2}\n    />\n  );\n}\n```\n\n---\n\n## Error Responses\n\n```json\n{\n  "error": "Failed to fetch icons"\n}\n```\n\n| Status | Description |\n|--------|-------------|\n| 400 | Invalid request (missing query, invalid `limit` or `offset`, etc.) |\n| 429 | Rate limit exceeded. Wait for `Retry-After` seconds |\n| 500 | Server error |\n';
+
+// src/index.ts
 var require2 = createRequire(import.meta.url);
 var { version: CLI_VERSION } = require2("../package.json");
 function confirm2(message) {
@@ -1523,336 +1537,62 @@ program.command("cache").description("Manage local icon cache").option("-c, --cl
     console.log(chalk.dim(`Clear with: ${chalk.white("unicon cache --clear")}`));
   }
 });
+var UNICON_SKILL_FILES = [
+  { path: "SKILL.md", content: SKILL_default },
+  { path: "references/cli-commands.md", content: cli_commands_default },
+  { path: "references/config-file.md", content: config_file_default },
+  { path: "references/api-reference.md", content: api_reference_default }
+];
+function printSkillFileTree(indent) {
+  UNICON_SKILL_FILES.forEach((file, index) => {
+    const branch = index === UNICON_SKILL_FILES.length - 1 ? "\u2514\u2500\u2500" : "\u251C\u2500\u2500";
+    console.log(chalk.dim(`${indent}${branch} ${file.path}`));
+  });
+}
 var IDE_CONFIGS = {
   claude: {
     name: "Claude Code",
     dir: ".claude/skills/unicon",
     filename: "SKILL.md",
-    format: "claude",
     description: "Claude Code (Anthropic CLI)"
   },
   codex: {
     name: "Codex",
     dir: ".codex/skills/unicon",
     filename: "SKILL.md",
-    format: "generic",
     description: "OpenAI Codex CLI"
   },
   cursor: {
     name: "Cursor",
     dir: ".cursor/skills/unicon",
     filename: "SKILL.md",
-    format: "cursor",
     description: "Cursor IDE"
   },
   agents: {
     name: "Agents",
     dir: ".agents/skills/unicon",
     filename: "SKILL.md",
-    format: "generic",
     description: "Generic .agents directory"
   },
   windsurf: {
     name: "Windsurf",
     dir: ".windsurf/skills/unicon",
     filename: "SKILL.md",
-    format: "generic",
     description: "Windsurf (Codeium)"
   },
   opencode: {
     name: "OpenCode",
     dir: ".opencode/skills/unicon",
     filename: "SKILL.md",
-    format: "generic",
     description: "OpenCode"
   },
   gemini: {
     name: "Gemini",
     dir: ".gemini/skills/unicon",
     filename: "SKILL.md",
-    format: "generic",
     description: "Google Gemini CLI"
   }
 };
-function getSkillContent(format) {
-  if (format === "claude") {
-    return `---
-name: unicon
-description: Add icons to projects using the Unicon unified icon library. Use when adding icons, searching for icons, or bundling icons for React, Vue, or Svelte projects.
-metadata:
-  author: webrenew
-  version: "1.0.0"
-  argument-hint: <icon-name-or-query>
----
-
-# Unicon - Unified Icon Library
-
-Add icons from 15,000+ icons across Lucide, Phosphor, Heroicons, Tabler, Feather, Remix, and Simple Icons. AI-powered semantic search finds the right icon even with vague descriptions.
-
-## Quick Usage
-
-### Search for icons
-\`\`\`bash
-npx @webrenew/unicon search "dashboard"
-npx @webrenew/unicon search "notification bell"
-npx @webrenew/unicon search "social media" --source phosphor
-\`\`\`
-
-### Get a single icon (React component)
-\`\`\`bash
-npx @webrenew/unicon get home
-npx @webrenew/unicon get home --format svg
-npx @webrenew/unicon get home --format vue
-npx @webrenew/unicon get home -o src/icons/Home.tsx
-\`\`\`
-
-### Bundle multiple icons
-\`\`\`bash
-# Tree-shakeable output (recommended)
-npx @webrenew/unicon bundle --query "arrow chevron" -o src/icons/
-npx @webrenew/unicon bundle --category Navigation -o src/icons/
-
-# Single file (not tree-shakeable)
-npx @webrenew/unicon bundle --query "dashboard" --single-file -o src/icons/dashboard.tsx
-\`\`\`
-
-## Output Formats
-
-| Format | Flag | Use Case |
-|--------|------|----------|
-| React | \`--format react\` (default) | React/Next.js projects |
-| Vue | \`--format vue\` | Vue 3 projects |
-| Svelte | \`--format svelte\` | Svelte/SvelteKit projects |
-| SVG | \`--format svg\` | Raw SVG files |
-| JSON | \`--format json\` | Custom rendering |
-
-## Icon Sources
-
-| Source | Flag | Icons |
-|--------|------|-------|
-| Lucide | \`--source lucide\` | 1,900+ stroke icons |
-| Phosphor | \`--source phosphor\` | 1,500+ fill icons |
-| Heroicons | \`--source heroicons\` | 292 Tailwind icons |
-| Tabler | \`--source tabler\` | 4,600+ stroke icons |
-| Feather | \`--source feather\` | 287 minimalist icons |
-| Remix | \`--source remix\` | 2,800+ icons |
-| Simple Icons | \`--source simple-icons\` | 3,300+ brand logos |
-
-## Generated Component Pattern
-
-React components are generated with this signature:
-
-\`\`\`tsx
-import type { SVGProps } from "react";
-
-export function IconName({ className, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-      className={className}
-      {...props}
-    >
-      {/* icon paths */}
-    </svg>
-  );
-}
-\`\`\`
-
-## Best Practices
-
-1. **Use semantic search**: Describe what you need ("loading spinner", "send message") rather than exact names
-2. **Tree-shakeable bundles**: Use split mode (default) for icon bundles - only imported icons ship to users
-3. **Consistent sources**: Stick to one icon source per project for visual consistency
-4. **Stroke icons**: Lucide, Tabler, Feather use strokes (scale better)
-5. **Fill icons**: Phosphor uses fills (better for solid icons)
-
-## Project Setup with Config File
-
-For projects with multiple icon needs:
-
-\`\`\`bash
-# Initialize config
-npx @webrenew/unicon init
-
-# Add bundles to config
-npx @webrenew/unicon add navigation --query "arrow chevron menu" --limit 30
-npx @webrenew/unicon add social --category Social --source simple-icons
-
-# Regenerate all bundles
-npx @webrenew/unicon sync
-\`\`\`
-
-## When to Use Unicon
-
-- Adding icons to a new component
-- Searching for an icon by concept ("celebration", "analytics")
-- Bundling icons for a feature area
-- Generating type-safe React/Vue/Svelte icon components
-- Finding brand logos (use Simple Icons source)
-`;
-  }
-  if (format === "cursor") {
-    return `---
-description: Add icons to projects using Unicon unified icon library. Use when adding icons, searching for icons, or bundling icons for React, Vue, or Svelte.
-globs: ["**/*.tsx", "**/*.jsx", "**/*.vue", "**/*.svelte"]
----
-
-# Unicon - Unified Icon Library
-
-Add icons from 15,000+ icons across Lucide, Phosphor, Heroicons, Tabler, Feather, Remix, and Simple Icons.
-
-## Commands
-
-### Search for icons
-\`\`\`bash
-npx @webrenew/unicon search "dashboard"
-npx @webrenew/unicon search "notification bell"
-\`\`\`
-
-### Get a single icon
-\`\`\`bash
-npx @webrenew/unicon get home -o src/icons/Home.tsx
-npx @webrenew/unicon get home --format vue -o src/icons/Home.vue
-\`\`\`
-
-### Bundle multiple icons (tree-shakeable)
-\`\`\`bash
-npx @webrenew/unicon bundle --query "arrow chevron" -o src/icons/
-npx @webrenew/unicon bundle --category Navigation -o src/icons/
-\`\`\`
-
-## Output Formats
-- \`--format react\` (default) - React/Next.js
-- \`--format vue\` - Vue 3
-- \`--format svelte\` - Svelte/SvelteKit
-- \`--format svg\` - Raw SVG
-
-## Icon Sources
-- \`--source lucide\` - 1,900+ stroke icons
-- \`--source phosphor\` - 1,500+ fill icons
-- \`--source heroicons\` - 292 Tailwind icons
-- \`--source tabler\` - 4,600+ stroke icons
-- \`--source simple-icons\` - 3,300+ brand logos
-
-## Generated Component Pattern
-\`\`\`tsx
-import type { SVGProps } from "react";
-
-export function IconName({ className, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className} {...props}>
-      {/* paths */}
-    </svg>
-  );
-}
-\`\`\`
-
-## Best Practices
-1. Use semantic search - describe what you need ("loading spinner") not exact names
-2. Use tree-shakeable bundles (default) - only imported icons ship
-3. Stick to one icon source per project for visual consistency
-`;
-  }
-  return `# Unicon - Unified Icon Library
-
-Add icons from 15,000+ icons across Lucide, Phosphor, Heroicons, Tabler, Feather, Remix, and Simple Icons.
-
-## Search for icons
-\`\`\`bash
-npx @webrenew/unicon search "dashboard"
-npx @webrenew/unicon search "notification bell"
-npx @webrenew/unicon search "social media" --source phosphor
-\`\`\`
-
-## Get a single icon
-\`\`\`bash
-npx @webrenew/unicon get home                              # React (default)
-npx @webrenew/unicon get home --format vue                 # Vue
-npx @webrenew/unicon get home --format svelte              # Svelte
-npx @webrenew/unicon get home --format svg                 # Raw SVG
-npx @webrenew/unicon get home -o src/icons/Home.tsx        # Output to file
-\`\`\`
-
-## Bundle multiple icons
-\`\`\`bash
-# Tree-shakeable (recommended)
-npx @webrenew/unicon bundle --query "arrow chevron" -o src/icons/
-
-# By category
-npx @webrenew/unicon bundle --category Navigation -o src/icons/
-
-# Single file
-npx @webrenew/unicon bundle --query "dashboard" --single-file -o src/icons/dashboard.tsx
-\`\`\`
-
-## Icon Sources
-| Source | Flag | Description |
-|--------|------|-------------|
-| Lucide | \`--source lucide\` | 1,900+ stroke icons |
-| Phosphor | \`--source phosphor\` | 1,500+ fill icons |
-| Heroicons | \`--source heroicons\` | 292 Tailwind icons |
-| Tabler | \`--source tabler\` | 4,600+ stroke icons |
-| Simple Icons | \`--source simple-icons\` | 3,300+ brand logos |
-
-## Generated Component
-\`\`\`tsx
-import type { SVGProps } from "react";
-
-export function IconName({ className, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className} {...props}>
-      {/* icon paths */}
-    </svg>
-  );
-}
-\`\`\`
-
-## Best Practices
-1. Use semantic search - describe what you need, not exact names
-2. Use tree-shakeable bundles (default) - only imported icons ship to users
-3. Stick to one icon source per project for visual consistency
-`;
-}
-function getReadmeContent() {
-  return `# Unicon Skill
-
-This skill enables AI assistants to help you add icons to your project using the [Unicon](https://unicon.dev) unified icon library.
-
-## What is Unicon?
-
-Unicon provides access to 15,000+ icons from popular libraries:
-- **Lucide** - 1,900+ stroke icons
-- **Phosphor** - 1,500+ fill icons
-- **Heroicons** - 292 Tailwind icons
-- **Tabler** - 4,600+ stroke icons
-- **Feather** - 287 minimalist icons
-- **Remix** - 2,800+ icons
-- **Simple Icons** - 3,300+ brand logos
-- **Iconoir** - 1,500+ minimalist icons
-
-## Usage
-
-Ask your AI assistant to:
-- "Add a home icon to my project"
-- "Search for dashboard icons"
-- "Bundle navigation icons for my app"
-- "Get a loading spinner icon"
-
-## Learn More
-
-- Website: https://unicon.dev
-- CLI: \`npx @webrenew/unicon --help\`
-- GitHub: https://github.com/WebRenew/unicon
-`;
-}
 function detectIDEs() {
   const detected = [];
   const cwd = process.cwd();
@@ -1944,8 +1684,7 @@ program.command("skill").description("Install Unicon skill/rules for AI coding a
     for (const [key, config] of Object.entries(IDE_CONFIGS)) {
       console.log(`  ${chalk.green(key.padEnd(12))} ${chalk.dim(config.description)}`);
       console.log(`  ${" ".repeat(12)} ${chalk.dim(`\u2192 ${config.dir}/`)}`);
-      console.log(`  ${" ".repeat(12)}   ${chalk.dim(`\u251C\u2500\u2500 ${config.filename}`)}`);
-      console.log(`  ${" ".repeat(12)}   ${chalk.dim(`\u2514\u2500\u2500 README.md`)}`);
+      printSkillFileTree(`  ${" ".repeat(12)}   `);
     }
     console.log();
     console.log(chalk.dim(`Install with: ${chalk.white("npx @webrenew/unicon skill --ide <name>")}`));
@@ -1989,8 +1728,7 @@ program.command("skill").description("Install Unicon skill/rules for AI coding a
         console.log(chalk.dim(`  \u2298 ${config.name.padEnd(14)} ${config.dir}/ (already exists)`));
       } else {
         console.log(`  ${chalk.green("+")} ${config.name.padEnd(14)} ${chalk.cyan(config.dir + "/")}`);
-        console.log(chalk.dim(`    ${" ".repeat(14)} \u251C\u2500\u2500 ${config.filename}`));
-        console.log(chalk.dim(`    ${" ".repeat(14)} \u2514\u2500\u2500 README.md`));
+        printSkillFileTree(`    ${" ".repeat(14)} `);
       }
     }
     console.log();
@@ -2010,21 +1748,19 @@ Installing Unicon skill...
     if (!config) continue;
     const targetDir = join(cwd, config.dir);
     const skillFile = join(targetDir, config.filename);
-    const readmeFile = join(targetDir, "README.md");
     if (existsSync(skillFile) && !options.force) {
       console.log(chalk.yellow(`  \u2298 ${config.name}: Already exists (use --force to overwrite)`));
       skipped++;
       continue;
     }
     try {
-      mkdirSync(targetDir, { recursive: true });
-      const skillContent = getSkillContent(config.format);
-      writeFileSync(skillFile, skillContent, "utf-8");
-      const readmeContent = getReadmeContent();
-      writeFileSync(readmeFile, readmeContent, "utf-8");
+      for (const file of UNICON_SKILL_FILES) {
+        const filePath = join(targetDir, file.path);
+        mkdirSync(dirname(filePath), { recursive: true });
+        writeFileSync(filePath, file.content, "utf-8");
+      }
       console.log(chalk.green(`  \u2713 ${config.name}: ${config.dir}/`));
-      console.log(chalk.dim(`      \u251C\u2500\u2500 ${config.filename}`));
-      console.log(chalk.dim(`      \u2514\u2500\u2500 README.md`));
+      printSkillFileTree("      ");
       installed++;
     } catch (error) {
       console.log(chalk.red(`  \u2717 ${config.name}: ${error instanceof Error ? error.message : "Failed"}`));

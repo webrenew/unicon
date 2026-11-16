@@ -397,23 +397,26 @@ unicon skill [options]
 
 | Option | Description |
 |--------|-------------|
-| `--ide <name>` | Target IDE (claude, cursor, windsurf, agent, antigravity, opencode, codex, aider) |
+| `--ide <name>` | Target IDE (claude, codex, cursor, agents, windsurf, opencode, gemini) |
 | `--all` | Install for all supported IDEs |
 | `-l, --list` | List all supported IDEs |
 | `-f, --force` | Overwrite existing skill files |
+| `-y, --yes` | Skip the confirmation prompt |
 
 **Supported IDEs:**
 
-| IDE | Directory | File |
-|-----|-----------|------|
-| Claude Code | `.claude/skills/unicon/` | `SKILL.md` |
-| Cursor | `.cursor/rules/` | `unicon.mdc` |
-| Windsurf | `.windsurf/rules/` | `unicon.md` |
-| Agent | `.agent/rules/` | `unicon.md` |
-| Antigravity | `.antigravity/rules/` | `unicon.md` |
-| OpenCode | `.opencode/rules/` | `unicon.md` |
-| Codex | `.codex/` | `unicon.md` |
-| Aider | `.aider/rules/` | `unicon.md` |
+Every assistant gets the same files from `skills/unicon/`: `SKILL.md` and
+`references/`.
+
+| IDE | Directory |
+|-----|-----------|
+| Claude Code | `.claude/skills/unicon/` |
+| Codex | `.codex/skills/unicon/` |
+| Cursor | `.cursor/skills/unicon/` |
+| Agents (generic) | `.agents/skills/unicon/` |
+| Windsurf | `.windsurf/skills/unicon/` |
+| OpenCode | `.opencode/skills/unicon/` |
+| Gemini CLI | `.gemini/skills/unicon/` |
 
 **Examples:**
 

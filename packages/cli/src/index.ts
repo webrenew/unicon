@@ -12,6 +12,11 @@ import { createInterface } from "readline";
 import * as p from "@clack/prompts";
 import clipboard from "clipboardy";
 import chokidar from "chokidar";
+// Bundled as text at build time; the repository's skills/ directory is the source.
+import uniconSkillMd from "../../../skills/unicon/SKILL.md";
+import uniconCliCommandsMd from "../../../skills/unicon/references/cli-commands.md";
+import uniconConfigFileMd from "../../../skills/unicon/references/config-file.md";
+import uniconApiReferenceMd from "../../../skills/unicon/references/api-reference.md";
 
 const require = createRequire(import.meta.url);
 const { version: CLI_VERSION } = require("../package.json") as { version: string };
@@ -2071,348 +2076,74 @@ interface IDEConfig {
   name: string;
   dir: string;
   filename: string;
-  format: "claude" | "cursor" | "generic";
   description: string;
 }
 
-// All IDEs use consistent structure: .<ide>/skills/unicon/SKILL.md + README.md
+/**
+ * The Unicon skill, bundled from `skills/unicon/` in the repository at build
+ * time (tsup `--loader .md=text`), so `unicon skill` installs the same files
+ * that the skills registry serves. Paths are relative to the skill directory.
+ */
+const UNICON_SKILL_FILES: ReadonlyArray<{ path: string; content: string }> = [
+  { path: "SKILL.md", content: uniconSkillMd },
+  { path: "references/cli-commands.md", content: uniconCliCommandsMd },
+  { path: "references/config-file.md", content: uniconConfigFileMd },
+  { path: "references/api-reference.md", content: uniconApiReferenceMd },
+];
+
+/** Print the installed skill files as a tree under a skill directory. */
+function printSkillFileTree(indent: string): void {
+  UNICON_SKILL_FILES.forEach((file, index) => {
+    const branch = index === UNICON_SKILL_FILES.length - 1 ? "└──" : "├──";
+    console.log(chalk.dim(`${indent}${branch} ${file.path}`));
+  });
+}
+
+// Every assistant reads the open Agent Skills format: .<ide>/skills/unicon/SKILL.md
 const IDE_CONFIGS: Record<string, IDEConfig> = {
   claude: {
     name: "Claude Code",
     dir: ".claude/skills/unicon",
     filename: "SKILL.md",
-    format: "claude",
     description: "Claude Code (Anthropic CLI)",
   },
   codex: {
     name: "Codex",
     dir: ".codex/skills/unicon",
     filename: "SKILL.md",
-    format: "generic",
     description: "OpenAI Codex CLI",
   },
   cursor: {
     name: "Cursor",
     dir: ".cursor/skills/unicon",
     filename: "SKILL.md",
-    format: "cursor",
     description: "Cursor IDE",
   },
   agents: {
     name: "Agents",
     dir: ".agents/skills/unicon",
     filename: "SKILL.md",
-    format: "generic",
     description: "Generic .agents directory",
   },
   windsurf: {
     name: "Windsurf",
     dir: ".windsurf/skills/unicon",
     filename: "SKILL.md",
-    format: "generic",
     description: "Windsurf (Codeium)",
   },
   opencode: {
     name: "OpenCode",
     dir: ".opencode/skills/unicon",
     filename: "SKILL.md",
-    format: "generic",
     description: "OpenCode",
   },
   gemini: {
     name: "Gemini",
     dir: ".gemini/skills/unicon",
     filename: "SKILL.md",
-    format: "generic",
     description: "Google Gemini CLI",
   },
 };
-
-function getSkillContent(format: IDEConfig["format"]): string {
-  // Claude Code format (full SKILL.md with frontmatter)
-  if (format === "claude") {
-    return `---
-name: unicon
-description: Add icons to projects using the Unicon unified icon library. Use when adding icons, searching for icons, or bundling icons for React, Vue, or Svelte projects.
-metadata:
-  author: webrenew
-  version: "1.0.0"
-  argument-hint: <icon-name-or-query>
----
-
-# Unicon - Unified Icon Library
-
-Add icons from 15,000+ icons across Lucide, Phosphor, Heroicons, Tabler, Feather, Remix, and Simple Icons. AI-powered semantic search finds the right icon even with vague descriptions.
-
-## Quick Usage
-
-### Search for icons
-\`\`\`bash
-npx @webrenew/unicon search "dashboard"
-npx @webrenew/unicon search "notification bell"
-npx @webrenew/unicon search "social media" --source phosphor
-\`\`\`
-
-### Get a single icon (React component)
-\`\`\`bash
-npx @webrenew/unicon get home
-npx @webrenew/unicon get home --format svg
-npx @webrenew/unicon get home --format vue
-npx @webrenew/unicon get home -o src/icons/Home.tsx
-\`\`\`
-
-### Bundle multiple icons
-\`\`\`bash
-# Tree-shakeable output (recommended)
-npx @webrenew/unicon bundle --query "arrow chevron" -o src/icons/
-npx @webrenew/unicon bundle --category Navigation -o src/icons/
-
-# Single file (not tree-shakeable)
-npx @webrenew/unicon bundle --query "dashboard" --single-file -o src/icons/dashboard.tsx
-\`\`\`
-
-## Output Formats
-
-| Format | Flag | Use Case |
-|--------|------|----------|
-| React | \`--format react\` (default) | React/Next.js projects |
-| Vue | \`--format vue\` | Vue 3 projects |
-| Svelte | \`--format svelte\` | Svelte/SvelteKit projects |
-| SVG | \`--format svg\` | Raw SVG files |
-| JSON | \`--format json\` | Custom rendering |
-
-## Icon Sources
-
-| Source | Flag | Icons |
-|--------|------|-------|
-| Lucide | \`--source lucide\` | 1,900+ stroke icons |
-| Phosphor | \`--source phosphor\` | 1,500+ fill icons |
-| Heroicons | \`--source heroicons\` | 292 Tailwind icons |
-| Tabler | \`--source tabler\` | 4,600+ stroke icons |
-| Feather | \`--source feather\` | 287 minimalist icons |
-| Remix | \`--source remix\` | 2,800+ icons |
-| Simple Icons | \`--source simple-icons\` | 3,300+ brand logos |
-
-## Generated Component Pattern
-
-React components are generated with this signature:
-
-\`\`\`tsx
-import type { SVGProps } from "react";
-
-export function IconName({ className, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-      className={className}
-      {...props}
-    >
-      {/* icon paths */}
-    </svg>
-  );
-}
-\`\`\`
-
-## Best Practices
-
-1. **Use semantic search**: Describe what you need ("loading spinner", "send message") rather than exact names
-2. **Tree-shakeable bundles**: Use split mode (default) for icon bundles - only imported icons ship to users
-3. **Consistent sources**: Stick to one icon source per project for visual consistency
-4. **Stroke icons**: Lucide, Tabler, Feather use strokes (scale better)
-5. **Fill icons**: Phosphor uses fills (better for solid icons)
-
-## Project Setup with Config File
-
-For projects with multiple icon needs:
-
-\`\`\`bash
-# Initialize config
-npx @webrenew/unicon init
-
-# Add bundles to config
-npx @webrenew/unicon add navigation --query "arrow chevron menu" --limit 30
-npx @webrenew/unicon add social --category Social --source simple-icons
-
-# Regenerate all bundles
-npx @webrenew/unicon sync
-\`\`\`
-
-## When to Use Unicon
-
-- Adding icons to a new component
-- Searching for an icon by concept ("celebration", "analytics")
-- Bundling icons for a feature area
-- Generating type-safe React/Vue/Svelte icon components
-- Finding brand logos (use Simple Icons source)
-`;
-  }
-
-  // Cursor format (MDC with frontmatter)
-  if (format === "cursor") {
-    return `---
-description: Add icons to projects using Unicon unified icon library. Use when adding icons, searching for icons, or bundling icons for React, Vue, or Svelte.
-globs: ["**/*.tsx", "**/*.jsx", "**/*.vue", "**/*.svelte"]
----
-
-# Unicon - Unified Icon Library
-
-Add icons from 15,000+ icons across Lucide, Phosphor, Heroicons, Tabler, Feather, Remix, and Simple Icons.
-
-## Commands
-
-### Search for icons
-\`\`\`bash
-npx @webrenew/unicon search "dashboard"
-npx @webrenew/unicon search "notification bell"
-\`\`\`
-
-### Get a single icon
-\`\`\`bash
-npx @webrenew/unicon get home -o src/icons/Home.tsx
-npx @webrenew/unicon get home --format vue -o src/icons/Home.vue
-\`\`\`
-
-### Bundle multiple icons (tree-shakeable)
-\`\`\`bash
-npx @webrenew/unicon bundle --query "arrow chevron" -o src/icons/
-npx @webrenew/unicon bundle --category Navigation -o src/icons/
-\`\`\`
-
-## Output Formats
-- \`--format react\` (default) - React/Next.js
-- \`--format vue\` - Vue 3
-- \`--format svelte\` - Svelte/SvelteKit
-- \`--format svg\` - Raw SVG
-
-## Icon Sources
-- \`--source lucide\` - 1,900+ stroke icons
-- \`--source phosphor\` - 1,500+ fill icons
-- \`--source heroicons\` - 292 Tailwind icons
-- \`--source tabler\` - 4,600+ stroke icons
-- \`--source simple-icons\` - 3,300+ brand logos
-
-## Generated Component Pattern
-\`\`\`tsx
-import type { SVGProps } from "react";
-
-export function IconName({ className, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className} {...props}>
-      {/* paths */}
-    </svg>
-  );
-}
-\`\`\`
-
-## Best Practices
-1. Use semantic search - describe what you need ("loading spinner") not exact names
-2. Use tree-shakeable bundles (default) - only imported icons ship
-3. Stick to one icon source per project for visual consistency
-`;
-  }
-
-  // Generic format (for codex, agents, windsurf, opencode, gemini)
-  return `# Unicon - Unified Icon Library
-
-Add icons from 15,000+ icons across Lucide, Phosphor, Heroicons, Tabler, Feather, Remix, and Simple Icons.
-
-## Search for icons
-\`\`\`bash
-npx @webrenew/unicon search "dashboard"
-npx @webrenew/unicon search "notification bell"
-npx @webrenew/unicon search "social media" --source phosphor
-\`\`\`
-
-## Get a single icon
-\`\`\`bash
-npx @webrenew/unicon get home                              # React (default)
-npx @webrenew/unicon get home --format vue                 # Vue
-npx @webrenew/unicon get home --format svelte              # Svelte
-npx @webrenew/unicon get home --format svg                 # Raw SVG
-npx @webrenew/unicon get home -o src/icons/Home.tsx        # Output to file
-\`\`\`
-
-## Bundle multiple icons
-\`\`\`bash
-# Tree-shakeable (recommended)
-npx @webrenew/unicon bundle --query "arrow chevron" -o src/icons/
-
-# By category
-npx @webrenew/unicon bundle --category Navigation -o src/icons/
-
-# Single file
-npx @webrenew/unicon bundle --query "dashboard" --single-file -o src/icons/dashboard.tsx
-\`\`\`
-
-## Icon Sources
-| Source | Flag | Description |
-|--------|------|-------------|
-| Lucide | \`--source lucide\` | 1,900+ stroke icons |
-| Phosphor | \`--source phosphor\` | 1,500+ fill icons |
-| Heroicons | \`--source heroicons\` | 292 Tailwind icons |
-| Tabler | \`--source tabler\` | 4,600+ stroke icons |
-| Simple Icons | \`--source simple-icons\` | 3,300+ brand logos |
-
-## Generated Component
-\`\`\`tsx
-import type { SVGProps } from "react";
-
-export function IconName({ className, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className} {...props}>
-      {/* icon paths */}
-    </svg>
-  );
-}
-\`\`\`
-
-## Best Practices
-1. Use semantic search - describe what you need, not exact names
-2. Use tree-shakeable bundles (default) - only imported icons ship to users
-3. Stick to one icon source per project for visual consistency
-`;
-}
-
-function getReadmeContent(): string {
-  return `# Unicon Skill
-
-This skill enables AI assistants to help you add icons to your project using the [Unicon](https://unicon.dev) unified icon library.
-
-## What is Unicon?
-
-Unicon provides access to 15,000+ icons from popular libraries:
-- **Lucide** - 1,900+ stroke icons
-- **Phosphor** - 1,500+ fill icons
-- **Heroicons** - 292 Tailwind icons
-- **Tabler** - 4,600+ stroke icons
-- **Feather** - 287 minimalist icons
-- **Remix** - 2,800+ icons
-- **Simple Icons** - 3,300+ brand logos
-- **Iconoir** - 1,500+ minimalist icons
-
-## Usage
-
-Ask your AI assistant to:
-- "Add a home icon to my project"
-- "Search for dashboard icons"
-- "Bundle navigation icons for my app"
-- "Get a loading spinner icon"
-
-## Learn More
-
-- Website: https://unicon.dev
-- CLI: \`npx @webrenew/unicon --help\`
-- GitHub: https://github.com/WebRenew/unicon
-`;
-}
 
 function detectIDEs(): string[] {
   const detected: string[] = [];
@@ -2553,8 +2284,7 @@ program
       for (const [key, config] of Object.entries(IDE_CONFIGS)) {
         console.log(`  ${chalk.green(key.padEnd(12))} ${chalk.dim(config.description)}`);
         console.log(`  ${" ".repeat(12)} ${chalk.dim(`→ ${config.dir}/`)}`);
-        console.log(`  ${" ".repeat(12)}   ${chalk.dim(`├── ${config.filename}`)}`);
-        console.log(`  ${" ".repeat(12)}   ${chalk.dim(`└── README.md`)}`);
+        printSkillFileTree(`  ${" ".repeat(12)}   `);
       }
       console.log();
       console.log(chalk.dim(`Install with: ${chalk.white("npx @webrenew/unicon skill --ide <name>")}`));
@@ -2609,8 +2339,7 @@ program
           console.log(chalk.dim(`  ⊘ ${config.name.padEnd(14)} ${config.dir}/ (already exists)`));
         } else {
           console.log(`  ${chalk.green("+")} ${config.name.padEnd(14)} ${chalk.cyan(config.dir + "/")}`);
-          console.log(chalk.dim(`    ${" ".repeat(14)} ├── ${config.filename}`));
-          console.log(chalk.dim(`    ${" ".repeat(14)} └── README.md`));
+          printSkillFileTree(`    ${" ".repeat(14)} `);
         }
       }
       console.log();
@@ -2633,7 +2362,6 @@ program
 
       const targetDir = join(cwd, config.dir);
       const skillFile = join(targetDir, config.filename);
-      const readmeFile = join(targetDir, "README.md");
 
       // Check if skill file exists
       if (existsSync(skillFile) && !options.force) {
@@ -2644,19 +2372,14 @@ program
 
       // Create directory and write files
       try {
-        mkdirSync(targetDir, { recursive: true });
-
-        // Write SKILL.md
-        const skillContent = getSkillContent(config.format);
-        writeFileSync(skillFile, skillContent, "utf-8");
-
-        // Write README.md
-        const readmeContent = getReadmeContent();
-        writeFileSync(readmeFile, readmeContent, "utf-8");
+        for (const file of UNICON_SKILL_FILES) {
+          const filePath = join(targetDir, file.path);
+          mkdirSync(dirname(filePath), { recursive: true });
+          writeFileSync(filePath, file.content, "utf-8");
+        }
 
         console.log(chalk.green(`  ✓ ${config.name}: ${config.dir}/`));
-        console.log(chalk.dim(`      ├── ${config.filename}`));
-        console.log(chalk.dim(`      └── README.md`));
+        printSkillFileTree("      ");
         installed++;
       } catch (error) {
         console.log(chalk.red(`  ✗ ${config.name}: ${error instanceof Error ? error.message : "Failed"}`));

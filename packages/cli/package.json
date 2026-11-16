@@ -10,8 +10,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
-    "dev": "tsup src/index.ts --format esm --watch",
+    "build": "tsup src/index.ts --format esm --dts --clean --loader .md=text",
+    "dev": "tsup src/index.ts --format esm --watch --loader .md=text",
     "prepublishOnly": "npm run build",
     "publish:package": "./scripts/publish.sh",
     "typecheck": "tsc --noEmit"
@@ -33,7 +33,7 @@
     "url": "git+https://github.com/WebRenew/unicon.git",
     "directory": "packages/cli"
   },
-  "homepage": "https://unicon.dev",
+  "homepage": "https://unicon.sh",
   "bugs": {
     "url": "https://github.com/WebRenew/unicon/issues"
   },

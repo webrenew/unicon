@@ -12,18 +12,18 @@ export const skillEntries: readonly SkillEntry[] = [
     id: "unicon",
     name: "Unicon",
     description:
-      "Help users add icons to React, Vue, Svelte, or web projects using the Unicon CLI and API.",
+      "Add icons from 19,000+ icons to React, Vue, Svelte, or HTML projects with the Unicon CLI or REST API.",
     publicPath: "/skills/unicon.md",
     tags: ["icons", "cli", "ai-assistants", "api"],
-    updatedAt: "2026-01-22",
+    updatedAt: "2026-11-16",
   },
   {
     id: "unicon-mcp",
     name: "Unicon MCP",
     description:
-      "Guide setup and usage of the Unicon MCP server in Claude, Cursor, and other MCP clients.",
+      "Connect and use the Unicon MCP server in Claude Code, Claude Desktop, Cursor, and other MCP clients.",
     publicPath: "/skills/unicon-mcp.md",
     tags: ["mcp", "ai-assistants", "icons", "setup"],
-    updatedAt: "2026-01-22",
+    updatedAt: "2026-11-16",
   },
 ];
