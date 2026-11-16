@@ -7,8 +7,13 @@ import { getIconCorpusChunk, getIconCorpusManifest } from "@/lib/queries";
 import type { IconCorpusChunk, IconCorpusManifest } from "@/lib/icon-corpus-format";
 
 const MANIFEST_TTL_MS = 5 * 60 * 1000;
+/**
+ * A fresh read is skipped if the memo is younger than this, so clients that
+ * send unknown versions cannot force a database read on every request.
+ */
+const MIN_FRESH_READ_INTERVAL_MS = 10 * 1000;
 
-let manifestMemo: { value: Promise<IconCorpusManifest>; expiresAt: number } | null = null;
+let manifestMemo: { value: Promise<IconCorpusManifest>; readAt: number; expiresAt: number } | null = null;
 const chunkMemo = new Map<string, Promise<string>>();
 
 /** Thrown when the data changed and no longer matches the requested version. */
@@ -27,17 +32,21 @@ function invalidateManifest(): void {
 /**
  * Get the corpus manifest, memoized for five minutes.
  *
- * @param options.fresh - Bypass the memo, for example when a client reports a
- *   version this instance has not seen yet.
+ * @param options.fresh - Re-read the database, for example when a client
+ *   reports a version this instance has not seen yet. Ignored while the memo
+ *   is younger than `MIN_FRESH_READ_INTERVAL_MS`.
  */
 export function getMemoizedIconCorpusManifest(
   options: { fresh?: boolean } = {}
 ): Promise<IconCorpusManifest> {
   const now = Date.now();
-  if (!options.fresh && manifestMemo && manifestMemo.expiresAt > now) return manifestMemo.value;
+  if (manifestMemo && manifestMemo.expiresAt > now) {
+    const canReadFresh = now - manifestMemo.readAt >= MIN_FRESH_READ_INTERVAL_MS;
+    if (!options.fresh || !canReadFresh) return manifestMemo.value;
+  }
 
   const value = getIconCorpusManifest();
-  manifestMemo = { value, expiresAt: now + MANIFEST_TTL_MS };
+  manifestMemo = { value, readAt: now, expiresAt: now + MANIFEST_TTL_MS };
   value.catch(() => {
     if (manifestMemo?.value === value) invalidateManifest();
   });

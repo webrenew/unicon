@@ -72,13 +72,20 @@ describe("GET /api/icons/corpus", () => {
     expect(response.status).toBe(409);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(await response.json()).toMatchObject({ version: manifest.version });
-    // The memoized manifest is re-read before rejecting the client's version.
-    expect(getIconCorpusManifest).toHaveBeenCalledTimes(2);
     expect(getIconCorpusChunk).not.toHaveBeenCalled();
   });
 
+  it("should not re-read the database for every unknown version", async () => {
+    for (let i = 0; i < 5; i++) await GET(request(`?chunk=0&v=bogus-${i}`));
+
+    // The memo was just read, so unknown versions are answered from it.
+    expect(getIconCorpusManifest).toHaveBeenCalledTimes(1);
+  });
+
   it("should accept a newer client version once the fresh manifest confirms it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
     await GET(request());
+    vi.setSystemTime(Date.now() + 11_000);
     const newer = { ...manifest, version: "19500-1800000000" };
     vi.mocked(getIconCorpusManifest).mockResolvedValue(newer);
     vi.mocked(getIconCorpusChunk).mockResolvedValue({ version: newer.version, rows: [row] });
@@ -87,6 +94,7 @@ describe("GET /api/icons/corpus", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ version: newer.version });
+    vi.useRealTimers();
   });
 
   it("should return 409 and not cache a chunk when the data changes mid-request", async () => {

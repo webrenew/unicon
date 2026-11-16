@@ -300,6 +300,48 @@ describe("useIconBrowser local corpus search", () => {
     );
   });
 
+  it("should send a pending report immediately when the user pages before it settles", async () => {
+    vi.mocked(getLoadedIconCorpus).mockReturnValue(corpus);
+    vi.mocked(reportLocalSearch).mockClear();
+    const { result } = renderHook(() => useIconBrowser({ initialIcons: [], totalCount: 0 }));
+
+    await act(async () => {
+      result.current.setSearch("shape");
+      await tick();
+    });
+    await waitFor(() => expect(result.current.totalResults).toBe(170));
+    expect(reportLocalSearch).not.toHaveBeenCalled();
+
+    await act(async () => {
+      result.current.goToPage(1);
+      await tick();
+    });
+
+    expect(reportLocalSearch).toHaveBeenCalledTimes(1);
+    expect(reportLocalSearch).toHaveBeenCalledWith(expect.objectContaining({ query: "shape", resultCount: 170 }));
+  });
+
+  it("should send a pending report on unmount and drop superseded prefixes", async () => {
+    vi.mocked(getLoadedIconCorpus).mockReturnValue(corpus);
+    vi.mocked(reportLocalSearch).mockClear();
+    const { result, unmount } = renderHook(() => useIconBrowser({ initialIcons: [], totalCount: 0 }));
+
+    for (const prefix of ["hou", "house"]) {
+      await act(async () => {
+        result.current.setSearch(prefix);
+        await tick();
+      });
+    }
+    await waitFor(() => expect(result.current.debouncedSearch).toBe("house"));
+    await act(async () => {
+      await tick();
+    });
+    unmount();
+
+    expect(reportLocalSearch).toHaveBeenCalledTimes(1);
+    expect(reportLocalSearch).toHaveBeenCalledWith(expect.objectContaining({ query: "house", resultCount: 1 }));
+  });
+
   it("should filter and paginate locally when the corpus is loaded", async () => {
     vi.mocked(getLoadedIconCorpus).mockReturnValue(corpus);
     const { result } = renderHook(() => useIconBrowser({ initialIcons: [], totalCount: 0 }));

@@ -51,8 +51,8 @@ describe("loadIconCorpus", () => {
     });
   });
 
-  it("should fail when a chunk belongs to a different version", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+  it("should fail when chunks keep belonging to a different version", async () => {
+    const fetchMock = vi.spyOn(global, "fetch").mockImplementation(async (input) => {
       const chunk = new URL(String(input), "https://unicon.sh").searchParams.get("chunk");
       if (chunk === null) return json({ version: "v1", total: 1, chunkSize: 1, chunks: 1 });
       return json({ version: "v2", chunk: 0, rows: [rows[0]] });
@@ -60,6 +60,34 @@ describe("loadIconCorpus", () => {
 
     await expect(loadIconCorpus()).rejects.toThrow(/version/);
     expect(getLoadedIconCorpus()).toBeNull();
+    // One revalidated attempt, then give up: manifest + chunk, twice.
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("should recover from a stale cached manifest without waiting for the cooldown", async () => {
+    const fetchMock = vi.spyOn(global, "fetch").mockImplementation(async (input, init) => {
+      const url = new URL(String(input), "https://unicon.sh");
+      const chunk = url.searchParams.get("chunk");
+      if (chunk === null) {
+        // The browser cache serves the old manifest until revalidated.
+        const version = init?.cache === "no-cache" ? "v2" : "v1";
+        return json({ version, total: 1, chunkSize: 1, chunks: 1 });
+      }
+      if (url.searchParams.get("v") !== "v2") return json({ error: "Icon corpus version changed", version: "v2" }, 409);
+      return json({ version: "v2", chunk: 0, rows: [rows[0]] });
+    });
+
+    const index = await loadIconCorpus();
+
+    expect(index.entries).toHaveLength(1);
+    expect(getLoadedIconCorpus()).toBe(index);
+    expect(shouldLoadIconCorpus()).toBe(true);
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+      "/api/icons/corpus",
+      "/api/icons/corpus?chunk=0&v=v1",
+      "/api/icons/corpus",
+      "/api/icons/corpus?chunk=0&v=v2",
+    ]);
   });
 
   it("should fail when the server returns an error", async () => {

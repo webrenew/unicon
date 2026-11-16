@@ -54,14 +54,37 @@ export function shouldLoadIconCorpus(): boolean {
 
 async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {
   const response = await fetch(url, init);
+  if (response.status === 409) throw new IconCorpusVersionChangedError();
   if (!response.ok) throw new Error(`Icon corpus request failed (${response.status}): ${url}`);
   return response.json();
 }
 
-async function fetchCorpus(isRetry: boolean): Promise<IconSearchIndex> {
-  // On retry, revalidate the manifest: the failure may have been a version
-  // change, and the browser would otherwise reuse the cached old manifest.
-  const manifest = await fetchJson(CORPUS_ENDPOINT, isRetry ? { cache: "no-cache" } : undefined);
+/** The corpus changed since the manifest was read (server `409` or mismatched chunk). */
+class IconCorpusVersionChangedError extends Error {
+  constructor() {
+    super("Icon corpus version changed during load");
+    this.name = "IconCorpusVersionChangedError";
+  }
+}
+
+/**
+ * Fetch the corpus. If the version changes mid-load (for example a browser
+ * still holding the old manifest after a re-extraction), re-read the manifest
+ * once and fetch again rather than failing into the retry cooldown.
+ */
+async function fetchCorpus(revalidateManifest: boolean): Promise<IconSearchIndex> {
+  try {
+    return await fetchCorpusOnce(revalidateManifest);
+  } catch (error) {
+    if (!(error instanceof IconCorpusVersionChangedError) || revalidateManifest) throw error;
+    return fetchCorpusOnce(true);
+  }
+}
+
+async function fetchCorpusOnce(revalidateManifest: boolean): Promise<IconSearchIndex> {
+  // Revalidating bypasses the browser's cached manifest (max-age=300), which
+  // would otherwise still point at the old version.
+  const manifest = await fetchJson(CORPUS_ENDPOINT, revalidateManifest ? { cache: "no-cache" } : undefined);
   if (!isIconCorpusManifest(manifest)) throw new Error("Invalid icon corpus manifest");
 
   const chunks = await Promise.all(
@@ -82,8 +105,8 @@ async function fetchChunk(manifest: IconCorpusManifest, chunk: number): Promise<
   const params = new URLSearchParams({ chunk: String(chunk), v: manifest.version });
   const data = await fetchJson(`${CORPUS_ENDPOINT}?${params}`);
   if (!isIconCorpusChunk(data) || data.chunk !== chunk) throw new Error(`Invalid icon corpus chunk ${chunk}`);
-  // A chunk from a different extraction would mix datasets; let the caller fall back.
-  if (data.version !== manifest.version) throw new Error(`Icon corpus version changed during load`);
+  // A chunk from a different extraction would mix datasets.
+  if (data.version !== manifest.version) throw new IconCorpusVersionChangedError();
   return data;
 }
 
@@ -94,6 +117,7 @@ async function fetchChunk(manifest: IconCorpusManifest, chunk: number): Promise<
  */
 export function loadIconCorpus(): Promise<IconSearchIndex> {
   if (!corpusPromise) {
+    // After a failure, start from a revalidated manifest.
     const attempt = fetchCorpus(lastFailureAt !== null).then(
       (index) => {
         loadedCorpus = index;

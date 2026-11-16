@@ -3,7 +3,7 @@ import { logger } from "@/lib/logger";
 import { iconSearchCache } from "@/lib/search-cache";
 import { getLoadedIconCorpus, loadIconCorpus, shouldLoadIconCorpus } from "@/lib/icon-corpus";
 import { searchIconIndex } from "@/lib/icon-search";
-import { reportLocalSearch } from "@/lib/search-analytics-client";
+import { reportLocalSearch, type LocalSearchReport } from "@/lib/search-analytics-client";
 import { useEventListener } from "@/lib/use-event-listener";
 import { toast } from "sonner";
 import { SIZE_PRESETS, STROKE_PRESETS, type SizePreset, type StrokePreset } from "./styled-icon";
@@ -320,7 +320,20 @@ export function useIconBrowser({ initialIcons, totalCount }: UseIconBrowserParam
   // overwrite the current results. Refs are stable across renders.
   const requestIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
-  const reportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingReportRef = useRef<{ report: LocalSearchReport; timer: ReturnType<typeof setTimeout> } | null>(null);
+
+  /**
+   * Settle the pending local-search report. A report is dropped only when the
+   * query itself changed (an intermediate prefix while typing); paging,
+   * filtering or leaving the page means the user acted on it, so send it now.
+   */
+  const settlePendingReport = useCallback((nextQuery: string | null) => {
+    const pending = pendingReportRef.current;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingReportRef.current = null;
+    if (nextQuery === null || nextQuery === pending.report.query) reportLocalSearch(pending.report);
+  }, []);
 
   // Fetch icons - defined as a useCallback
   const fetchIcons = useCallback(
@@ -357,8 +370,7 @@ export function useIconBrowser({ initialIcons, totalCount }: UseIconBrowserParam
       // A newer request supersedes any in-flight one and any pending report.
       abortRef.current?.abort();
       abortRef.current = null;
-      if (reportTimerRef.current) clearTimeout(reportTimerRef.current);
-      reportTimerRef.current = null;
+      settlePendingReport(debouncedSearch.trim());
 
       const isDefaultFirstPage =
         pageNum === 0 &&
@@ -392,10 +404,12 @@ export function useIconBrowser({ initialIcons, totalCount }: UseIconBrowserParam
         // here. Like the API, record first pages of non-empty queries only.
         const reportedQuery = debouncedSearch.trim();
         if (pageNum === 0 && reportedQuery) {
-          reportTimerRef.current = setTimeout(() => {
-            reportTimerRef.current = null;
-            reportLocalSearch({ query: reportedQuery, sourceFilter: sourceId, resultCount: local.total, responseTimeMs });
+          const report = { query: reportedQuery, sourceFilter: sourceId, resultCount: local.total, responseTimeMs };
+          const timer = setTimeout(() => {
+            pendingReportRef.current = null;
+            reportLocalSearch(report);
           }, LOCAL_SEARCH_REPORT_DELAY_MS);
+          pendingReportRef.current = { report, timer };
         }
 
         // Non-urgent: keep typing responsive while the grid re-renders.
@@ -453,7 +467,7 @@ export function useIconBrowser({ initialIcons, totalCount }: UseIconBrowserParam
         if (isCurrent()) setIsLoading(false);
       }
     },
-    [debouncedSearch, selectedSource, selectedCategory]
+    [debouncedSearch, selectedSource, selectedCategory, settlePendingReport]
   );
 
   // Use a ref for fetchIcons to avoid stale closures in effects without adding
@@ -480,11 +494,11 @@ export function useIconBrowser({ initialIcons, totalCount }: UseIconBrowserParam
     fetchIconsRef.current(page);
   }, [debouncedSearch, selectedSource, selectedCategory, page]);
 
-  // Abort any in-flight request and drop any pending report on unmount.
+  // On unmount, abort any in-flight request and send any pending report.
   useEffect(() => () => {
     abortRef.current?.abort();
-    if (reportTimerRef.current) clearTimeout(reportTimerRef.current);
-  }, []);
+    settlePendingReport(null);
+  }, [settlePendingReport]);
 
   const goToPage = (newPage: number) => {
     if (newPage >= 0 && newPage < totalPages) {
