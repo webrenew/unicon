@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
+  assertSafeIcon,
   assignNames,
   generateIconFile,
   generateSingleFile,
@@ -11,6 +12,7 @@ import {
   mergeIndexFile,
   toComponentName,
   toJsxBody,
+  toSafeFileName,
   type CodegenIcon,
 } from "./codegen";
 
@@ -189,5 +191,37 @@ describe("mergeIndexFile", () => {
     expect(mergeIndexFile(existing, generated)).toBe(
       'export { Check } from "./check";\nexport { Home } from "./home";\nexport { Github } from "./github";\n'
     );
+  });
+});
+
+describe("assertSafeIcon", () => {
+  it("should accept real icon data", () => {
+    expect(() => assertSafeIcon(githubLogo)).not.toThrow();
+  });
+
+  it.each([
+    ["braces that JSX would evaluate", '<path d="M0 0" />{process.exit()}'],
+    ["a script element", "<script>alert(1)</script>"],
+    ["an event handler", '<path onload="alert(1)" d="M0 0"/>'],
+    ["a javascript: URL", '<a href="javascript:alert(1)"><path d="M0 0"/></a>'],
+  ])("should reject content with %s", (_, content) => {
+    expect(() => generateIconFile({ ...lucideHome, content }, "react")).toThrow(/Refusing to generate/);
+  });
+
+  it("should reject a viewBox that is not four numbers", () => {
+    expect(() => assertSafeIcon({ ...lucideHome, viewBox: '0 0 24 24" onload="x' })).toThrow(/invalid viewBox/);
+  });
+});
+
+describe("toSafeFileName", () => {
+  it("should keep only lowercase letters, digits, and hyphens", () => {
+    expect(toSafeFileName("hive_blockchain")).toBe("hive-blockchain");
+    expect(toSafeFileName("../../etc/passwd")).toBe("etc-passwd");
+    expect(toSafeFileName("..")).toBe("icon");
+  });
+
+  it("should keep generated paths inside the output directory", () => {
+    const evil: CodegenIcon = { ...lucideHome, normalizedName: "../../outside", sourceId: "../x" };
+    for (const file of generateSplitFiles([evil, evil], "svg")) expect(file.path).toMatch(/^[a-z0-9-]+\.svg$/);
   });
 });

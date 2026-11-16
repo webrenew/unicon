@@ -5,7 +5,7 @@ import chalk from "chalk";
 import ora from "ora";
 import figlet from "figlet";
 import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from "fs";
-import { dirname, resolve, join, extname } from "path";
+import { dirname, resolve, join, extname, sep } from "path";
 import { homedir } from "os";
 import { createRequire } from "module";
 import { createInterface } from "readline";
@@ -28,6 +28,7 @@ import {
   matchIconRefs,
   mergeIndexFile,
   toComponentName,
+  toSafeFileName,
   type GeneratedFile,
   type IconFormat,
 } from "./codegen";
@@ -845,7 +846,8 @@ function writeGeneratedFiles(directory: string, files: readonly GeneratedFile[])
   const fullDir = resolve(process.cwd(), directory);
   mkdirSync(fullDir, { recursive: true });
   for (const file of files) {
-    const target = join(fullDir, file.path);
+    const target = resolve(fullDir, file.path);
+    if (!target.startsWith(fullDir + sep)) throw new Error(`Refusing to write outside ${directory}: ${file.path}`);
     // Keep exports from earlier runs, so adding icons to a folder never drops existing ones.
     const content = file.path === "index.ts" && existsSync(target) ? mergeIndexFile(readFileSync(target, "utf-8"), file.content) : file.content;
     writeFileSync(target, content, "utf-8");
@@ -1222,7 +1224,7 @@ program
         }
       } else if (options.output) {
         const output: string = isDirectoryPath(options.output)
-          ? join(options.output, `${icon.normalizedName}.${FILE_EXTENSIONS[format]}`)
+          ? join(options.output, `${toSafeFileName(icon.normalizedName)}.${FILE_EXTENSIONS[format]}`)
           : options.output;
         const fullPath = resolve(process.cwd(), output);
         mkdirSync(dirname(fullPath), { recursive: true });

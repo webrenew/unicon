@@ -40,7 +40,14 @@ jobs:
       - name: Update version (if manual dispatch)
         if: github.event_name == 'workflow_dispatch'
         working-directory: packages/cli
-        run: npm version ${{ inputs.version }} --no-git-tag-version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version: $INPUT_VERSION" >&2
+            exit 1
+          fi
+          npm version "$INPUT_VERSION" --no-git-tag-version
 
       - name: Check tag matches package version
         if: github.event_name == 'push'
