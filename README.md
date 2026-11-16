@@ -133,8 +133,8 @@ For larger projects, use a config file:
 
 ```bash
 unicon init
-unicon add dashboard --category Dashboards
-unicon add nav --query "arrow chevron"
+unicon add ui --icons home,search,settings,user --source lucide
+unicon add arrows --query "arrow chevron" --source lucide --limit 20
 unicon sync
 ```
 

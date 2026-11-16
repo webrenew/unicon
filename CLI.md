@@ -113,9 +113,12 @@ unicon get <name> [options]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--format <type>` | Output format: react, vue, svelte, svg, json | react |
-| `--source <id>` | Specify source if name is ambiguous | auto |
-| `-o, --output <path>` | Write to file instead of stdout | stdout |
+| `--format <type>` | Output format: react, vue, svelte, svg, json | from `package.json` |
+| `--source <id>` | Library to take the icon from | Lucide, then any |
+| `-o, --output <path>` | Write to a file, or `<name>.<ext>` in a directory | stdout |
+
+`get` matches the name exactly (`home` or `lucide:home`). If no icon has that
+name, it exits with code 1 and suggests similar icons.
 
 **Examples:**
 
@@ -198,7 +201,7 @@ unicon preview arrow-right --source lucide
 
 ### unicon bundle
 
-Bundle multiple icons into files.
+Write many icons at once: exact names, a search, or favorites.
 
 ```bash
 unicon bundle [options]
@@ -208,28 +211,34 @@ unicon bundle [options]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--query <text>` | Search query to select icons | - |
-| `--category <name>` | Bundle by category | - |
-| `--source <id>` | Filter by library | all |
-| `--format <type>` | Output format | react |
-| `--limit <n>` | Max icons to bundle | 50 |
-| `-o, --output <path>` | Output directory or file | ./icons |
-| `--single-file` | All icons in one file (react, svg, json). Without it, component formats get one file per icon | false |
+| `-i, --icons <list>` | Exact icons, comma-separated (`home,lucide:settings,simple-icons:github`) | - |
+| `-q, --query <text>` | Search query to select icons | - |
+| `-c, --category <name>` | Category filter for the search | - |
+| `-s, --source <id>` | Library for bare `--icons` names, and search filter | all |
+| `-f, --format <type>` | `react`, `vue`, `svelte`, `svg`, `json` | from `package.json` |
+| `-l, --limit <n>` | Max icons from a search | 100 |
+| `-o, --output <path>` | A directory (one file per icon) or a file (all icons in one file) | ./icons |
+| `--single-file` | Write `icons.<ext>` in the output directory (react, svg, json) | false |
+| `--stars` | Bundle favorited icons | false |
+
+A directory gets one file per icon, plus an `index.ts` for components, so it
+is tree-shakeable. A `.svg` file gets an SVG sprite of `<symbol>` elements.
+Vue and Svelte always need a directory.
 
 **Examples:**
 
 ```bash
-# Bundle by category
-unicon bundle --category Dashboards -o ./src/icons
+# Exact icons, one file per icon
+unicon bundle --icons settings,log-out,user --source lucide -o ./src/icons
 
-# Bundle by search query
-unicon bundle --query "navigation arrows" --format vue -o ./icons
+# Brand logos as individual .svg files
+unicon bundle --icons github,discord,x --source simple-icons --format svg -o ./public/logos
 
-# One file per icon (the default for components; tree-shakeable)
-unicon bundle --category Social -o ./src/icons/social
+# Search results for a category
+unicon bundle --category Arrows --source lucide --limit 30 -o ./src/icons/arrows
 
-# Single file with all icons
-unicon bundle --query "home settings user" --single-file -o ./icons.tsx
+# SVG sprite
+unicon bundle --icons home,menu,x --source lucide --format svg -o ./public/icons.svg
 ```
 
 ---
@@ -271,6 +280,9 @@ unicon sync [options]
 |--------|-------------|
 | `--name <bundle>` | Sync only specified bundle |
 | `--dry-run` | Preview changes without writing |
+| `--watch` | Re-sync when the config changes |
+
+Exits with code 1 when a bundle fails or a listed icon does not exist.
 
 **Examples:**
 
@@ -299,24 +311,33 @@ unicon add <name> [options]
 
 | Option | Description |
 |--------|-------------|
-| `--query <text>` | Search query for icons |
-| `--category <name>` | Category filter |
-| `--source <id>` | Library filter |
-| `--format <type>` | Output format |
-| `--limit <n>` | Max icons |
-| `-o, --output <path>` | Output path |
+| `-i, --icons <list>` | Exact icons, comma-separated |
+| `-q, --query <text>` | Search query for icons |
+| `-c, --category <name>` | Category filter |
+| `-s, --source <id>` | Library for bare names, and search filter |
+| `-f, --format <type>` | `react`, `vue`, `svelte`, `svg`, `json` (default: from `package.json`) |
+| `-l, --limit <n>` | Max icons from a search (default 50) |
+| `-o, --output <path>` | Output directory or file (default `./src/icons/<name>`) |
 
 **Examples:**
 
 ```bash
-# Add category bundle
-unicon add dashboard --category Dashboards
+# Exact icons
+unicon add nav --icons home,search,bell,user --source lucide
 
-# Add query-based bundle
-unicon add nav --query "arrow menu chevron" --limit 30
+# Brand logos
+unicon add social --icons github,discord,x --source simple-icons
 
-# Add with specific options
-unicon add social --category Social --source phosphor --format vue
+# Search-based bundle
+unicon add arrows --query "arrow chevron" --source lucide --limit 20
+```
+
+### unicon bundle:add
+
+Append exact icons to a bundle's `icons` list. `--sync` regenerates it.
+
+```bash
+unicon bundle:add nav settings lucide:log-out --sync
 ```
 
 ---
@@ -537,116 +558,67 @@ Icon data as JSON for programmatic use.
 
 ## Config File
 
-The `.uniconrc.json` file defines your project's icon bundles for reproducible generation.
-
-### Schema
-
-```json
-{
-  "bundles": [
-    {
-      "name": "string",
-      "query": "string (optional)",
-      "category": "string (optional)",
-      "source": "string (optional)",
-      "limit": "number (optional, default: 50)",
-      "format": "react | vue | svelte | svg | json",
-      "output": "string (path)"
-    }
-  ]
-}
-```
+The `.uniconrc.json` file defines your project's icon bundles for reproducible generation. Add `"$schema": "https://unicon.sh/schema/uniconrc.json"` for editor completion and validation.
 
 ### Bundle Properties
 
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
 | `name` | string | Yes | Bundle identifier |
-| `query` | string | No* | Search query for icons |
-| `category` | string | No* | Filter by category |
-| `source` | string | No | Filter by library (lucide, phosphor, etc.) |
-| `limit` | number | No | Max icons (default: 50) |
-| `format` | string | Yes | Output format |
-| `output` | string | Yes | Output path (file or directory) |
+| `output` | string | Yes | A directory (one file per icon, plus `index.ts`) or a file (all icons in one file) |
+| `icons` | string[] | No* | Exact icons: `name` (from `source`, else Lucide) or `source:name` |
+| `query` | string | No* | Search query; adds up to `limit` matches |
+| `category` | string | No* | Category filter for the search |
+| `source` | string | No* | Library for bare `icons` names, and search filter |
+| `limit` | number | No | Max icons from a search (default: 100) |
+| `format` | string | No | `react`, `vue`, `svelte`, `svg`, `json` (default: from `package.json`) |
 
-*Either `query` or `category` should be specified.
+*At least one of `icons`, `query`, `category`, or `source`. Vue and Svelte need a directory `output`.
 
 ### Complete Example
 
 ```json
 {
+  "$schema": "https://unicon.sh/schema/uniconrc.json",
   "bundles": [
     {
-      "name": "dashboard",
-      "category": "Dashboards",
-      "limit": 50,
-      "format": "react",
-      "output": "./src/icons/dashboard.tsx"
+      "name": "ui",
+      "icons": ["home", "search", "settings", "log-out", "user"],
+      "source": "lucide",
+      "output": "./src/icons/ui"
     },
     {
-      "name": "navigation",
-      "query": "arrow chevron menu home",
-      "limit": 30,
-      "format": "react",
-      "output": "./src/icons/navigation.tsx"
-    },
-    {
-      "name": "social",
-      "category": "Social",
-      "source": "phosphor",
-      "format": "react",
-      "output": "./src/icons/social.tsx"
+      "name": "arrows",
+      "query": "arrow chevron",
+      "source": "lucide",
+      "limit": 20,
+      "output": "./src/icons/arrows"
     },
     {
       "name": "brands",
-      "query": "github twitter facebook",
+      "icons": ["github", "discord", "x"],
       "source": "simple-icons",
-      "format": "json",
-      "output": "./src/data/brands.json"
+      "format": "svg",
+      "output": "./public/icons/brands"
     }
   ]
 }
 ```
 
-### One File per Icon
-
-`unicon bundle` with a directory output (the default for component formats) writes each icon to its own file. `unicon sync` writes each bundle to the single file at its `output`.
-
-`unicon bundle -o output/` gives:
+A directory output is tree-shakeable:
 
 ```
-output/
-├── Home.tsx
-├── Settings.tsx
-├── User.tsx
+src/icons/ui/
+├── home.tsx
+├── search.tsx
+├── settings.tsx
 └── index.ts  # Re-exports all icons
 ```
 
-This enables true tree-shaking:
-
 ```tsx
 // Only Home is bundled
-import { Home } from "./icons/dashboard";
+import { Home } from "./icons/ui";
 ```
-
-### Workflow
-
-```bash
-# 1. Initialize config
-unicon init
-
-# 2. Search for icons you need
-unicon search "dashboard"
-
-# 3. Add bundles based on your needs
-unicon add dashboard --category Dashboards
-unicon add nav --query "arrow menu chevron home"
-
-# 4. Generate all bundles
-unicon sync
-```
-
----
 
 ## API Reference
 

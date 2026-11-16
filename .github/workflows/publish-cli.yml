@@ -14,31 +14,63 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/cli
+    # The GitHub release step needs to write; everything else only reads.
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: '20'
+          cache: pnpm
           registry-url: 'https://registry.npmjs.org'
 
+      # The CLI is a pnpm workspace package with no lockfile of its own, and its
+      # build embeds ../../skills, so install from the repository root.
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: npm run build
-
+      # Set the version before building: the build inlines package.json's version.
       - name: Update version (if manual dispatch)
         if: github.event_name == 'workflow_dispatch'
-        run: npm version ${{ inputs.version }} --no-git-tag-version
+        working-directory: packages/cli
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version: $INPUT_VERSION" >&2
+            exit 1
+          fi
+          npm version "$INPUT_VERSION" --no-git-tag-version
+
+      - name: Check tag matches package version
+        if: github.event_name == 'push'
+        working-directory: packages/cli
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME}" != "cli-v${version}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match packages/cli/package.json version ${version}" >&2
+            exit 1
+          fi
+
+      - name: Test
+        run: pnpm vitest run packages/cli src/lib/skills-registry.test.ts
+
+      - name: Build
+        working-directory: packages/cli
+        run: pnpm run build
 
       - name: Publish to npm
+        working-directory: packages/cli
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
