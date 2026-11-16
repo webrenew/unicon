@@ -4,6 +4,7 @@ import { eq, like, or, sql, asc } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import type { IconData, SourceData } from "@/types/icon";
 import { expandSearchQuery } from "./icon-aliases";
+import { ICON_CORPUS_CHUNK_SIZE, ICON_CORPUS_FLAGS, type IconCorpusManifest, type IconCorpusRow } from "./icon-corpus-format";
 
 /**
  * Get all icon sources with their stats.
@@ -97,7 +98,9 @@ export async function searchIcons(params: {
     })
     .from(icons)
     .where(conditions.length > 0 ? sql`${sql.join(conditions, sql` AND `)}` : undefined)
-    .orderBy(asc(icons.normalizedName))
+    // Tie-break by id so ordering is deterministic and matches the client-side
+    // corpus search (`compareIconOrder` in icon-search.ts).
+    .orderBy(asc(icons.normalizedName), asc(icons.id))
     .limit(limit)
     .offset(offset);
 
@@ -317,6 +320,74 @@ export async function getCategories(): Promise<string[]> {
   return getCachedCategories();
 }
 
+
+/**
+ * Get the icon corpus manifest: a version that changes when icons are
+ * re-extracted, plus the chunk layout for `getIconCorpusChunk`.
+ */
+export async function getIconCorpusManifest(): Promise<IconCorpusManifest> {
+  const [countRows, sourceRows] = await Promise.all([
+    db.select({ count: sql<number>`count(*)` }).from(icons),
+    db.select({ latest: sql<number | null>`max(${sources.extractedAt})` }).from(sources),
+  ]);
+  const total = Number(countRows[0]?.count ?? 0);
+  const latestExtraction = Number(sourceRows[0]?.latest ?? 0);
+
+  return {
+    version: `${total}-${latestExtraction}`,
+    total,
+    chunkSize: ICON_CORPUS_CHUNK_SIZE,
+    chunks: Math.ceil(total / ICON_CORPUS_CHUNK_SIZE),
+  };
+}
+
+interface IconCorpusDbRow {
+  id: string;
+  name: string;
+  normalizedName: string;
+  sourceId: string;
+  category: string | null;
+  tags: string | null;
+  viewBox: string;
+  content: string;
+  defaultStroke: number | null;
+  defaultFill: number | null;
+  strokeWidth: string | null;
+  brandColor: string | null;
+}
+
+/**
+ * Get one chunk of the icon corpus in search order (normalized name, then id).
+ * Tags stay as the raw JSON string so client-side matching is byte-identical
+ * to the SQL `lower(tags) LIKE` search.
+ */
+export async function getIconCorpusChunk(chunk: number): Promise<IconCorpusRow[]> {
+  const rows = (await db.all(sql`
+    SELECT
+      id, name, normalized_name AS normalizedName, source_id AS sourceId,
+      category, tags, view_box AS viewBox, content,
+      default_stroke AS defaultStroke, default_fill AS defaultFill,
+      stroke_width AS strokeWidth, brand_color AS brandColor
+    FROM icons
+    ORDER BY normalized_name ASC, id ASC
+    LIMIT ${ICON_CORPUS_CHUNK_SIZE} OFFSET ${chunk * ICON_CORPUS_CHUNK_SIZE}
+  `)) as IconCorpusDbRow[];
+
+  return rows.map((row) => [
+    row.id,
+    row.name,
+    row.normalizedName,
+    row.sourceId,
+    row.category,
+    row.tags,
+    row.viewBox,
+    row.content,
+    (row.defaultStroke ? ICON_CORPUS_FLAGS.defaultStroke : 0) |
+      (row.defaultFill ? ICON_CORPUS_FLAGS.defaultFill : 0),
+    row.strokeWidth,
+    row.brandColor,
+  ]);
+}
 
 // Helper to map database row to IconData type
 function mapIconRow(row: typeof icons.$inferSelect): IconData {

@@ -1,8 +1,16 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { iconSearchCache } from "@/lib/search-cache";
+import { getLoadedIconCorpus, loadIconCorpus, shouldLoadIconCorpus } from "@/lib/icon-corpus";
+import { createIconSearchEntry, createIconSearchIndex, type IconSearchIndex } from "@/lib/icon-search";
 import type { IconData } from "@/types/icon";
 import { useIconBrowser } from "./use-icon-browser";
+
+vi.mock("@/lib/icon-corpus", () => ({
+  getLoadedIconCorpus: vi.fn(() => null),
+  loadIconCorpus: vi.fn(() => new Promise(() => {})),
+  shouldLoadIconCorpus: vi.fn(() => false),
+}));
 
 function makeIcon(id: string, sourceId: string): IconData {
   return {
@@ -69,6 +77,17 @@ describe("useIconBrowser request sequencing", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     iconSearchCache.clear();
+  });
+
+  it("does not download the corpus when the browser opts out", async () => {
+    const { result } = renderHook(() => useIconBrowser({ initialIcons: [], totalCount: 0 }));
+
+    await act(async () => {
+      result.current.setSearch("arrow");
+    });
+
+    await waitFor(() => expect(pending).toHaveLength(1));
+    expect(loadIconCorpus).not.toHaveBeenCalled();
   });
 
   it("uses the server-rendered first page without a duplicate fetch", async () => {
@@ -199,5 +218,115 @@ describe("useIconBrowser request sequencing", () => {
     });
     await waitFor(() => expect(result.current.icons.map((icon) => icon.id)).toEqual(["lucide-a"]));
     expect(result.current.isLoading).toBe(false);
+  });
+});
+
+describe("useIconBrowser local corpus search", () => {
+  let corpus: IconSearchIndex;
+
+  beforeEach(() => {
+    iconSearchCache.clear();
+    corpus = createIconSearchIndex([
+      createIconSearchEntry(makeIcon("lucide:arrow-left", "lucide")),
+      createIconSearchEntry(makeIcon("tabler:arrow-right", "tabler")),
+      createIconSearchEntry(makeIcon("lucide:house", "lucide")),
+      ...Array.from({ length: 170 }, (_, index) =>
+        createIconSearchEntry(makeIcon(`tabler:shape-${String(index).padStart(3, "0")}`, "tabler")),
+      ),
+    ]);
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    vi.spyOn(global, "fetch").mockRejectedValue(new Error("network should not be used"));
+  });
+
+  afterEach(() => {
+    vi.mocked(getLoadedIconCorpus).mockReset().mockReturnValue(null);
+    vi.mocked(loadIconCorpus).mockReset().mockImplementation(() => new Promise(() => {}));
+    vi.mocked(shouldLoadIconCorpus).mockReset().mockReturnValue(false);
+    vi.restoreAllMocks();
+  });
+
+  it("should start loading the corpus when the search input is focused", () => {
+    vi.mocked(shouldLoadIconCorpus).mockReturnValue(true);
+    const { result } = renderHook(() => useIconBrowser({ initialIcons: [], totalCount: 0 }));
+
+    act(() => {
+      result.current.warmSearch();
+      result.current.warmSearch();
+    });
+
+    expect(loadIconCorpus).toHaveBeenCalledTimes(1);
+  });
+
+  it("should answer searches from the loaded corpus without a network request", async () => {
+    vi.mocked(getLoadedIconCorpus).mockReturnValue(corpus);
+    const { result } = renderHook(() => useIconBrowser({ initialIcons: [], totalCount: 0 }));
+
+    await act(async () => {
+      result.current.setSearch("arrow");
+      await tick();
+    });
+
+    await waitFor(() =>
+      expect(result.current.icons.map((icon) => icon.id)).toEqual([
+        "lucide:arrow-left",
+        "tabler:arrow-right",
+      ]),
+    );
+    expect(result.current.totalResults).toBe(2);
+    expect(result.current.isLoading).toBe(false);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("should filter and paginate locally when the corpus is loaded", async () => {
+    vi.mocked(getLoadedIconCorpus).mockReturnValue(corpus);
+    const { result } = renderHook(() => useIconBrowser({ initialIcons: [], totalCount: 0 }));
+
+    await act(async () => {
+      result.current.setSelectedSource("tabler");
+    });
+    await waitFor(() => expect(result.current.totalResults).toBe(171));
+    expect(result.current.icons).toHaveLength(160);
+    expect(result.current.icons[0]!.id).toBe("tabler:arrow-right");
+
+    await act(async () => {
+      result.current.goToPage(1);
+    });
+    await waitFor(() =>
+      expect(result.current.icons.map((icon) => icon.id)).toEqual(
+        Array.from({ length: 11 }, (_, index) => `tabler:shape-${String(159 + index).padStart(3, "0")}`),
+      ),
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("should switch to local search once the corpus finishes loading", async () => {
+    let finishLoading: (index: IconSearchIndex) => void = () => {};
+    vi.mocked(shouldLoadIconCorpus).mockReturnValue(true);
+    vi.mocked(loadIconCorpus).mockImplementation(
+      () => new Promise<IconSearchIndex>((resolve) => { finishLoading = resolve; }),
+    );
+    vi.mocked(global.fetch).mockImplementation(async () =>
+      new Response(JSON.stringify({ icons: [makeIcon("lucide:arrow-left", "lucide")], hasMore: false, total: 1 })),
+    );
+    const { result } = renderHook(() => useIconBrowser({ initialIcons: [], totalCount: 0 }));
+
+    await act(async () => {
+      result.current.setSearch("arr");
+    });
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+    expect(loadIconCorpus).toHaveBeenCalledTimes(1);
+
+    vi.mocked(getLoadedIconCorpus).mockReturnValue(corpus);
+    await act(async () => {
+      finishLoading(corpus);
+      await tick();
+    });
+
+    await act(async () => {
+      result.current.setSearch("house");
+      await tick();
+    });
+    await waitFor(() => expect(result.current.icons.map((icon) => icon.id)).toEqual(["lucide:house"]));
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });

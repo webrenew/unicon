@@ -34,6 +34,7 @@ export function MetallicIconBrowser({
     isLoading,
     searchType,
     expandedQuery,
+    warmSearch,
     strokePreset,
     setStrokePreset,
     sizePreset,
@@ -111,6 +112,7 @@ export function MetallicIconBrowser({
           search={search}
           hasDebouncedSearch={hasDebouncedSearch}
           onSearchChange={setSearch}
+          onSearchFocus={warmSearch}
           isLoading={isLoading}
           searchType={searchType}
           expandedQuery={expandedQuery}

@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { logger } from "@/lib/logger";
 import { iconSearchCache } from "@/lib/search-cache";
+import { getLoadedIconCorpus, loadIconCorpus, shouldLoadIconCorpus } from "@/lib/icon-corpus";
+import { searchIconIndex } from "@/lib/icon-search";
 import { useEventListener } from "@/lib/use-event-listener";
 import { toast } from "sonner";
 import { SIZE_PRESETS, STROKE_PRESETS, type SizePreset, type StrokePreset } from "./styled-icon";
@@ -8,6 +10,11 @@ import type { IconData, IconLibrary } from "@/types/icon";
 
 // Keep homepage payload and first render lighter while preserving dense browsing.
 const ICONS_PER_PAGE = 160;
+
+// Server searches are debounced to limit requests. Once the corpus is loaded,
+// searches run in memory, so results can follow every keystroke.
+const SERVER_SEARCH_DEBOUNCE_MS = 150;
+const LOCAL_SEARCH_DEBOUNCE_MS = 0;
 
 interface UseIconBrowserParams {
   initialIcons: IconData[];
@@ -265,13 +272,36 @@ export function useIconBrowser({ initialIcons, totalCount }: UseIconBrowserParam
     }
   }, [performAddToBundle]);
 
+  // Local corpus search: download the corpus the first time someone interacts
+  // with search or filters, then answer searches in memory.
+  const [isCorpusReady, setIsCorpusReady] = useState(() => getLoadedIconCorpus() !== null);
+  const corpusRequestedRef = useRef(false);
+
+  /** Start loading the icon corpus (idempotent). Safe to call on search focus. */
+  const warmSearch = useCallback(() => {
+    if (corpusRequestedRef.current || getLoadedIconCorpus() || !shouldLoadIconCorpus()) return;
+    corpusRequestedRef.current = true;
+    loadIconCorpus()
+      .then(() => setIsCorpusReady(true))
+      .catch((error: unknown) => {
+        logger.error("Failed to load icon corpus; using server search:", error);
+      });
+  }, []);
+
+  const hasInteracted =
+    search.length > 0 || selectedSource !== "all" || selectedCategory !== "all" || page !== 0;
+  useEffect(() => {
+    if (hasInteracted) warmSearch();
+  }, [hasInteracted, warmSearch]);
+
   // Debounce search
+  const searchDebounceMs = isCorpusReady ? LOCAL_SEARCH_DEBOUNCE_MS : SERVER_SEARCH_DEBOUNCE_MS;
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search);
-    }, 150);
+    }, searchDebounceMs);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, searchDebounceMs]);
 
   // Track the latest in-flight request so slower stale responses (e.g. an
   // unfiltered search that resolves after the user picks a library) never
@@ -327,6 +357,23 @@ export function useIconBrowser({ initialIcons, totalCount }: UseIconBrowserParam
         setExpandedQuery(null);
         setTotalResults(initialTotalCountRef.current);
         setIsLoading(false);
+        return;
+      }
+
+      const corpus = getLoadedIconCorpus();
+      if (corpus) {
+        const local = searchIconIndex(corpus, {
+          query: debouncedSearch,
+          sourceId: selectedSource === "all" ? undefined : selectedSource,
+          category: selectedCategory === "all" ? undefined : selectedCategory,
+          limit: ICONS_PER_PAGE,
+          offset: pageNum * ICONS_PER_PAGE,
+        });
+        // Non-urgent: keep typing responsive while the grid re-renders.
+        startTransition(() => {
+          applyResults({ ...local, searchType: "text", expandedQuery: null });
+          setIsLoading(false);
+        });
         return;
       }
 
@@ -431,6 +478,7 @@ export function useIconBrowser({ initialIcons, totalCount }: UseIconBrowserParam
     isLoading,
     searchType,
     expandedQuery,
+    warmSearch,
 
     // Display presets
     strokePreset,

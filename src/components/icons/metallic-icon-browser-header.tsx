@@ -32,6 +32,8 @@ interface MetallicIconBrowserHeaderProps {
   search: string;
   hasDebouncedSearch: boolean;
   onSearchChange: (value: string) => void;
+  /** Called when the search input gains focus, to preload local search. */
+  onSearchFocus?: (() => void) | undefined;
   isLoading: boolean;
   searchType: string;
   expandedQuery: string | null;
@@ -232,6 +234,7 @@ export function MetallicIconBrowserHeader({
   search,
   hasDebouncedSearch,
   onSearchChange,
+  onSearchFocus,
   isLoading,
   searchType,
   expandedQuery,
@@ -369,6 +372,7 @@ export function MetallicIconBrowserHeader({
             placeholder="Try 'business icons' or 'celebration'…"
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
+            onFocus={onSearchFocus}
             className="w-full bg-white dark:bg-[hsl(0,0%,3%)] rounded-lg pl-10 pr-12 py-2.5 text-black dark:text-white placeholder:text-black/40 dark:placeholder:text-white/40 text-sm focus:outline-none focus:ring-0 focus:bg-gray-50 dark:focus:bg-[hsl(0,0%,5%)] transition-colors duration-500"
             autoComplete="off"
           />
