@@ -57,31 +57,35 @@ Get a single icon and output to stdout or file.
 \`\`\`bash
 unicon get home
 unicon get home --format svg
-unicon get home -o src/icons/Home.tsx
+unicon get home -o src/icons
+unicon get simple-icons:github -o src/icons/github.tsx
 \`\`\`
 
+Matches the name exactly; exits with an error and suggestions if no icon has it.
+
 Options:
-- \`--format <type>\` - react, vue, svelte, svg, json (default: react)
-- \`--source <id>\` - Specify source if ambiguous
-- \`-o, --output <path>\` - Write to file
+- \`--format <type>\` - react, vue, svelte, svg, json (default: from package.json)
+- \`--source <id>\` - Library to take the icon from (default: Lucide, then any)
+- \`-o, --output <path>\` - Write to a file, or to <name>.<ext> in a directory
 
 ### bundle
-Bundle multiple icons into files (tree-shakeable by default).
+Write many icons. A directory gets one file per icon plus index.ts (tree-shakeable); a file gets all icons in one file (a .svg file becomes a sprite).
 
 \`\`\`bash
-unicon bundle --query "arrow chevron" -o src/icons/
-unicon bundle --category Navigation -o src/icons/
-unicon bundle --query "dashboard" --single-file -o icons.tsx
+unicon bundle --icons settings,log-out,user --source lucide -o src/icons
+unicon bundle --query "arrow chevron" --source lucide --limit 20 -o src/icons/arrows
+unicon bundle --icons home,menu,x --format svg -o public/icons.svg
 \`\`\`
 
 Options:
+- \`--icons <list>\` - Exact icons, comma-separated (home,lucide:settings)
 - \`--query <text>\` - Search query
 - \`--category <name>\` - Filter by category
-- \`--source <id>\` - Filter by library
-- \`--format <type>\` - Output format (default: react)
-- \`--limit <n>\` - Max icons (default: 50)
-- \`-o, --output <path>\` - Output directory or file
-- \`--single-file\` - All icons in one file (not recommended)
+- \`--source <id>\` - Library for bare names, and search filter
+- \`--format <type>\` - Output format (default: from package.json)
+- \`--limit <n>\` - Max icons from a search (default: 100)
+- \`-o, --output <path>\` - Output directory or file (default: ./icons)
+- \`--single-file\` - Write icons.<ext> in the output directory
 
 ### init
 Create a \`.uniconrc.json\` config file.
@@ -103,8 +107,8 @@ unicon sync --dry-run
 Add a bundle to config.
 
 \`\`\`bash
-unicon add navigation --query "arrow menu chevron"
-unicon add social --category Social --source phosphor
+unicon add nav --icons home,search,bell,user --source lucide
+unicon add arrows --query "arrow chevron" --source lucide --limit 20
 \`\`\`
 
 ### info <name>
@@ -137,24 +141,26 @@ unicon skill --all
 
 \`\`\`json
 {
+  "$schema": "https://unicon.sh/schema/uniconrc.json",
   "bundles": [
     {
-      "name": "dashboard",
-      "category": "Dashboards",
-      "limit": 50,
-      "format": "react",
-      "output": "./src/icons/dashboard.tsx"
+      "name": "ui",
+      "icons": ["home", "search", "settings", "simple-icons:github"],
+      "source": "lucide",
+      "output": "./src/icons/ui"
     },
     {
-      "name": "navigation",
-      "query": "arrow chevron menu",
-      "limit": 30,
-      "format": "react",
-      "output": "./src/icons/navigation.tsx"
+      "name": "arrows",
+      "query": "arrow chevron",
+      "source": "lucide",
+      "limit": 20,
+      "output": "./src/icons/arrows"
     }
   ]
 }
 \`\`\`
+
+\`icons\` selects exact icons; \`query\`, \`category\`, and \`source\` add search results. An \`output\` without an extension gets one file per icon (required for Vue and Svelte). \`sync\` exits with code 1 if a listed icon does not exist.
 
 ## Output Formats
 
@@ -306,9 +312,9 @@ unicon search "arrow" --source lucide --limit 10`}
             <CommandCard
               icon={DownloadIcon}
               command="unicon get <name>"
-              description="Get a single icon and output to stdout. Perfect for piping to clipboard or a file."
+              description="Get one icon by exact name and output to stdout, a file, or a directory. Exits with suggestions if no icon has that name."
               example={`unicon get home
-unicon get home --format vue
+unicon get simple-icons:github -o ./src/icons
 unicon get settings --format svelte -o ./settings.svelte`}
             />
 
@@ -323,10 +329,10 @@ unicon info arrow-right --source phosphor`}
             <CommandCard
               icon={PackageIcon}
               command="unicon bundle"
-              description="Bundle icons into tree-shakeable components. Creates one file per icon by default for optimal bundling."
-              example={`unicon bundle --category Dashboards -o ./icons
-unicon bundle --query "home" --format vue -o ./icons
-unicon bundle --format svg --single-file -o ./all.svg`}
+              description="Write many icons by exact name or search. A directory output gets one tree-shakeable file per icon; a .svg file gets a sprite."
+              example={`unicon bundle --icons home,settings,user --source lucide -o ./icons
+unicon bundle --query "arrow chevron" --format vue -o ./icons
+unicon bundle --icons home,menu,x --format svg -o ./public/icons.svg`}
             />
 
             <CommandCard
@@ -342,7 +348,7 @@ unicon init --force  # Overwrite existing`}
               command="unicon sync"
               description="Generate all bundles defined in your .uniconrc.json config file."
               example={`unicon sync
-unicon sync --name dashboard  # Sync specific bundle
+unicon sync --name ui         # Sync specific bundle
 unicon sync --dry-run         # Preview changes`}
             />
 
@@ -350,9 +356,9 @@ unicon sync --dry-run         # Preview changes`}
               icon={PlusIcon}
               command="unicon add <name>"
               description="Add a new bundle configuration to your .uniconrc.json file."
-              example={`unicon add social --category Social
-unicon add nav --query "arrow menu" --limit 30
-unicon add files --source lucide --format vue`}
+              example={`unicon add nav --icons home,search,bell --source lucide
+unicon add social --icons github,discord,x --source simple-icons
+unicon add arrows --query "arrow chevron" --limit 20`}
             />
 
             <CommandCard
@@ -375,7 +381,7 @@ unicon preview arrow --source phosphor`}
             <CommandCard
               icon={LayersIcon}
               command="unicon sources"
-              description="List all 8 available icon libraries with version info and icon counts."
+              description="List the 9 icon libraries and their --source IDs."
               example={`unicon sources
 unicon sources --json`}
             />

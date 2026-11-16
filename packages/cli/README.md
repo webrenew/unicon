@@ -67,8 +67,8 @@ For larger projects, define bundles in `.uniconrc.json`:
 
 ```bash
 unicon init
-unicon add dashboard --category Dashboards
-unicon add nav --query "arrow chevron menu"
+unicon add ui --icons home,search,settings,user --source lucide
+unicon add arrows --query "arrow chevron" --source lucide --limit 20
 unicon sync
 ```
 
@@ -79,10 +79,10 @@ unicon sync
 | Lucide | 1,900+ |
 | Phosphor | 1,500+ |
 | Huge Icons | 1,800+ |
-| Heroicons | 292 |
-| Tabler | 4,600+ |
-| Feather | 287 |
-| Remix Icon | 2,800+ |
+| Heroicons | 640+ |
+| Tabler | 4,900+ |
+| Feather | 280+ |
+| Remix Icon | 3,100+ |
 | Simple Icons | 3,300+ |
 | Iconoir | 1,600+ |
 

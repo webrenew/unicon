@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unicon.sh/schema/uniconrc.json",
+  "title": "Unicon config (.uniconrc.json)",
+  "description": "Icon bundles that `unicon sync` generates. See https://unicon.sh/docs/cli.",
+  "type": "object",
+  "required": ["bundles"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "bundles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/bundle" }
+    }
+  },
+  "$defs": {
+    "bundle": {
+      "type": "object",
+      "required": ["name", "output"],
+      "additionalProperties": false,
+      "anyOf": [
+        { "required": ["icons"] },
+        { "required": ["query"] },
+        { "required": ["category"] },
+        { "required": ["source"] }
+      ],
+      "properties": {
+        "name": { "type": "string", "description": "Bundle name, used by `unicon sync --name`." },
+        "icons": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^([a-z0-9-]+:)?[a-z0-9-]+$" },
+          "description": "Exact icons as `source:name` or `name` (bare names use `source`, then Lucide)."
+        },
+        "query": { "type": "string", "description": "Semantic search query. Adds the top `limit` matches." },
+        "category": { "type": "string", "description": "Category filter for the search." },
+        "source": {
+          "type": "string",
+          "enum": ["lucide", "phosphor", "hugeicons", "heroicons", "tabler", "feather", "remix", "iconoir", "simple-icons"],
+          "description": "Library for bare `icons` names and for the search."
+        },
+        "format": {
+          "type": "string",
+          "enum": ["react", "vue", "svelte", "svg", "json"],
+          "description": "Output format. Defaults to the framework in package.json."
+        },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 320, "default": 100, "description": "Maximum icons from `query`, `category`, or `source`." },
+        "output": {
+          "type": "string",
+          "description": "A directory (no extension) gets one file per icon and an index.ts; a file gets every icon in one file. Vue and Svelte need a directory."
+        }
+      }
+    }
+  }
+}

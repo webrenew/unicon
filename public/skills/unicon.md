@@ -2,10 +2,10 @@
 name: unicon
 description: Adds icons to web projects with Unicon, which generates zero-dependency icon code from 19,000+ icons in Lucide, Phosphor, Hugeicons, Heroicons, Tabler, Feather, Remix, Iconoir, and Simple Icons (brand logos). Searches icons semantically, then writes React, Vue, Svelte, SVG, or JSON into the project with the `unicon` CLI (`npx @webrenew/unicon`) or the unicon.sh REST API. Use this skill whenever the user wants to add, find, replace, or bundle icons or brand logos in a React, Next.js, Vue, Nuxt, Svelte, or HTML project, mentions Unicon, `.uniconrc.json`, or `unicon` commands, or wants icons without adding a package such as lucide-react or react-icons, even if they only say "put a settings icon here" or "I need the GitHub logo". When Unicon MCP tools are connected, see the unicon-mcp skill.
 license: MIT
-compatibility: Requires Node.js 18+ for the CLI and network access to https://unicon.sh.
+compatibility: Requires Node.js 18+, @webrenew/unicon 0.4.0+ (what npx installs), and network access to https://unicon.sh.
 metadata:
   author: webrenew
-  version: "0.3.0"
+  version: "0.4.0"
   website: https://unicon.sh
   repository: https://github.com/WebRenew/unicon
   openclaw:
@@ -37,7 +37,7 @@ while the package downloads. If that happens, run the command again.
 
 | The user wants | Use |
 |----------------|-----|
-| One icon, or a few specific icons | `unicon get <name>`, once per icon |
+| One icon, or a few specific icons | `unicon get <name>`, or `unicon bundle --icons a,b,c` |
 | A themed set of icons (navigation, social, ...) | `unicon bundle --query ... -o <dir>` |
 | A set the team regenerates later | `.uniconrc.json` and `unicon sync` |
 | Icons fetched from code, or no Node.js | The REST API, see [api-reference.md](references/api-reference.md) |
@@ -69,53 +69,57 @@ for people.
 
 ### 3. Generate the code
 
-**Specific icons:** use `get` for each icon. This gives an exact set:
+**Specific icons:** use `get` for one icon, or `bundle --icons` for several:
 
 ```bash
-npx @webrenew/unicon get log-out --source lucide -o src/components/icons/log-out.tsx
-npx @webrenew/unicon get settings --source lucide -o src/components/icons/settings.tsx
+npx @webrenew/unicon get log-out --source lucide -o src/components/icons
+npx @webrenew/unicon bundle --icons settings,log-out,user --source lucide -o src/components/icons
 ```
 
-`get` takes the name part of the ID (`log-out`, not `lucide:log-out`). It
-searches for that name and uses an exact match. If there is no exact match,
-it silently uses the closest result, which can be a different icon. Copy names
-from the `search` output, and check the component name in the generated file.
+Both match names exactly. `get` takes a name (`log-out`) and `--icons` also
+takes full IDs (`lucide:log-out,simple-icons:github`), so one command can mix
+libraries. If a name does not exist, `get` exits with an error and suggests
+similar icons, and `bundle` warns and writes the rest. Copy names from the
+`search` output.
 
-Without `-o`, the code goes to stdout. The format follows the framework in
-`package.json`: `react`, `next`, or `@remix-run/react` give `react`; `vue`
-or `nuxt` give `vue`; `svelte` or `@sveltejs/kit` give `svelte`. Otherwise
-the format is `react`. Pass `--format react|vue|svelte|svg|json` to choose
-the format yourself.
+`-o` takes a directory or a file. In a directory, `get` writes
+`<name>.<ext>`, and `bundle` writes one file per icon and an `index.ts` that
+re-exports the components, so bundlers drop the icons the app does not
+import. Without `-o`, `get` prints the code. When two libraries have an icon
+with the same name, the second file gets the library as a suffix
+(`home-tabler.tsx`, component `HomeTabler`).
 
-**A themed set:** use `bundle` into a directory:
+The format follows the framework in `package.json`: `react`, `next`, or
+`@remix-run/react` give `react`; `vue` or `nuxt` give `vue`; `svelte` or
+`@sveltejs/kit` give `svelte`. Otherwise the format is `react`. Pass
+`--format react|vue|svelte|svg|json` to choose it yourself. With `svg`, a
+directory gets one `.svg` file per icon, and a file path gets an SVG sprite of
+`<symbol>` elements.
+
+**A themed set:** use `bundle --query`:
 
 ```bash
 npx @webrenew/unicon bundle --query "arrows chevrons" --source lucide --limit 20 -o src/components/icons
 ```
 
-For `react`, `vue`, and `svelte`, this writes one file per icon and an
-`index.ts` that re-exports them, so bundlers remove the icons the app does not
-import. For `svg` and `json`, it writes one file at `-o` instead. For
-individual `.svg` files, use `get --format svg` for each icon. A query returns up to
-`--limit` matches (default 100), and some can be loosely related. Run the
-same `search` first and set `--limit` to the number of matches you want.
-`--single-file` writes one file instead (React, SVG, or JSON only), and that
-file is not tree-shakeable.
+A query adds up to `--limit` matches (default 100), and some can be loosely
+related. Run the same `search` first, then either set `--limit` or pass the
+names you want with `--icons`.
 
 **A repeatable set:** use the config file:
 
 ```bash
-npx @webrenew/unicon add nav --query "arrow chevron menu" --source lucide --limit 20
+npx @webrenew/unicon add nav --icons home,search,bell,user --source lucide
 npx @webrenew/unicon sync
 ```
 
-`add` creates an entry in `.uniconrc.json`. `sync` writes each entry to one
-file, by default `./src/icons/<name>.tsx`. Config entries select icons by
-search query, not by exact name, so check the result after `sync`. `sync`
-generates React or JSON only. In a Vue or Svelte project it writes React
-code, so use `bundle` or `get` there. Read
-[config-file.md](references/config-file.md) before you edit the config by
-hand.
+`add` creates an entry in `.uniconrc.json`, and `sync` regenerates every
+entry. List exact names in `icons`; a `query` adds search results, which can
+change as the index changes. An `output` without an extension
+(`./src/icons/nav`) gets one file per icon; Vue and Svelte need this. `sync`
+exits with an error if a listed icon does not exist, so it can run in CI.
+Read [config-file.md](references/config-file.md) before you edit the config
+by hand.
 
 ### 4. Use the icons and verify
 
@@ -132,8 +136,9 @@ export function LogOut({ className, ...props }: SVGProps<SVGSVGElement>) {
   `className="size-4"`, or with `width` and `height`.
 - Components are `aria-hidden`. Next to an icon-only button, add an
   `aria-label` to the button.
-- Simple Icons logos are fill-based and include the brand color in the API
-  data (`brandColor`).
+- Fill icons (Phosphor, Remix, Simple Icons logos, Heroicons and Iconoir
+  solid) use `fill="currentColor"`, and stroke icons use `stroke`. The API
+  data has each logo's brand color (`brandColor`).
 
 Import from the generated path, then run the project's typecheck or build to
 confirm that the imports resolve.

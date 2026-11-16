@@ -17,6 +17,20 @@ import uniconSkillMd from "../../../skills/unicon/SKILL.md";
 import uniconCliCommandsMd from "../../../skills/unicon/references/cli-commands.md";
 import uniconConfigFileMd from "../../../skills/unicon/references/config-file.md";
 import uniconApiReferenceMd from "../../../skills/unicon/references/api-reference.md";
+import {
+  COMPONENT_FORMATS,
+  FILE_EXTENSIONS,
+  generateIconFile,
+  generateSingleFile,
+  generateSplitFiles,
+  isDirectoryPath,
+  isIconFormat,
+  matchIconRefs,
+  mergeIndexFile,
+  toComponentName,
+  type GeneratedFile,
+  type IconFormat,
+} from "./codegen";
 
 const require = createRequire(import.meta.url);
 const { version: CLI_VERSION } = require("../package.json") as { version: string };
@@ -450,25 +464,11 @@ async function auditProject(): Promise<AuditResult> {
 // Normalized SVG Generation Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Default stroke configuration - matches Lucide/Feather conventions */
-const DEFAULT_STROKE = {
-  strokeWidth: 2,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-};
-
-/**
- * Determines rendering mode based on icon source.
- * - Phosphor: fill-based (weight is baked into icon variant)
- * - Lucide/Hugeicons: stroke-based (supports dynamic strokeWidth)
- */
-function getIconRenderMode(sourceId: string): "fill" | "stroke" {
-  return sourceId === "phosphor" ? "fill" : "stroke";
-}
-
 // Config file types
 interface BundleConfig {
   name: string;
+  /** Exact icons, as `source:name` or `name` (uses `source`). */
+  icons?: string[];
   query?: string;
   category?: string;
   source?: string;
@@ -505,18 +505,19 @@ function createDefaultConfig(): UniconConfig {
     $schema: "https://unicon.sh/schema/uniconrc.json",
     bundles: [
       {
-        name: "dashboard",
-        category: "Dashboards",
-        limit: 50,
+        name: "common",
+        icons: ["home", "settings", "user", "search", "menu", "x", "check"],
+        source: "lucide",
         format: "react",
-        output: "./src/icons/dashboard.tsx",
+        output: "./src/icons/common",
       },
       {
         name: "navigation",
-        query: "arrow chevron menu home",
+        query: "arrow chevron menu",
+        source: "lucide",
         limit: 30,
         format: "react",
-        output: "./src/icons/navigation.tsx",
+        output: "./src/icons/navigation",
       },
     ],
   };
@@ -735,6 +736,8 @@ interface Icon {
   category: string | null;
   tags: string[];
   strokeWidth: string | null;
+  defaultStroke?: boolean;
+  defaultFill?: boolean;
 }
 
 interface SearchResponse {
@@ -807,115 +810,140 @@ async function fetchCategories(): Promise<string[]> {
   ];
 }
 
-function toPascalCase(str: string): string {
-  return str
-    .split("-")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join("");
+/**
+ * Fetch icons by exact name. The API returns every library's icon with each
+ * name; `matchIconRefs` picks the requested library.
+ *
+ * @param refs - `source:name` or `name`
+ * @param defaultSource - Library for bare names
+ */
+async function fetchIconsByRefs(
+  refs: readonly string[],
+  defaultSource?: string,
+  options: { useCache?: boolean } = { useCache: true }
+): Promise<{ icons: Icon[]; missing: string[] }> {
+  const names = [...new Set(refs.map((ref) => ref.slice(ref.indexOf(":") + 1).trim().toLowerCase()).filter(Boolean))];
+  if (names.length === 0) return { icons: [], missing: [...refs] };
+
+  const cacheKey = getCacheKey({ type: "names", names: names.join(",") });
+  let candidates = options.useCache ? getFromCache<Icon[]>(cacheKey) : null;
+  if (!candidates) {
+    const url = new URL(`${API_BASE}/api/icons`);
+    url.searchParams.set("names", names.join(","));
+    const res = await fetch(url.toString());
+    if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
+    candidates = ((await res.json()) as SearchResponse).icons;
+    if (options.useCache) setCache(cacheKey, candidates);
+  }
+
+  const { icons, missing } = matchIconRefs(refs, candidates, defaultSource);
+  return { icons: icons as Icon[], missing };
+}
+
+/** Write generated files under a directory, creating it if needed. */
+function writeGeneratedFiles(directory: string, files: readonly GeneratedFile[]): void {
+  const fullDir = resolve(process.cwd(), directory);
+  mkdirSync(fullDir, { recursive: true });
+  for (const file of files) {
+    const target = join(fullDir, file.path);
+    // Keep exports from earlier runs, so adding icons to a folder never drops existing ones.
+    const content = file.path === "index.ts" && existsSync(target) ? mergeIndexFile(readFileSync(target, "utf-8"), file.content) : file.content;
+    writeFileSync(target, content, "utf-8");
+  }
 }
 
 /**
- * Generate raw SVG attributes (kebab-case) for use in .svg files.
- * Includes normalized stroke defaults for consistency.
+ * Write a set of icons to `output`. A directory gets one file per icon (plus
+ * an `index.ts` for components); a file path gets all icons in one file.
+ * Vue and Svelte always need a directory.
+ *
+ * @returns A description of what was written, for messages
+ * @throws When a Vue or Svelte set is given a file path
  */
-function getSvgAttributes(icon: Icon): string {
-  const mode = getIconRenderMode(icon.sourceId);
-  
-  if (mode === "fill") {
-    return 'fill="currentColor"';
+function writeIconSet(icons: readonly Icon[], format: IconFormat, output: string, options: { dryRun?: boolean } = {}): string {
+  if (isDirectoryPath(output)) {
+    const files = generateSplitFiles(icons, format);
+    if (!options.dryRun) writeGeneratedFiles(output, files);
+    return `${output.replace(/[\\/]+$/, "")}/ (${files.length} files)`;
   }
-  
-  const strokeWidth = parseFloat(icon.strokeWidth || "2") || DEFAULT_STROKE.strokeWidth;
-  
-  return [
-    'fill="none"',
-    'stroke="currentColor"',
-    `stroke-width="${strokeWidth}"`,
-    `stroke-linecap="${DEFAULT_STROKE.strokeLinecap}"`,
-    `stroke-linejoin="${DEFAULT_STROKE.strokeLinejoin}"`,
-  ].join(" ");
+  if (COMPONENT_FORMATS.has(format) && format !== "react") {
+    const suggestion = output.replace(/\.[a-zA-Z0-9]+$/, "");
+    throw new Error(`${format} needs one component per file, so the output must be a directory. Use "${suggestion}" instead of "${output}".`);
+  }
+  if (!options.dryRun) {
+    const fullPath = resolve(process.cwd(), output);
+    mkdirSync(dirname(fullPath), { recursive: true });
+    writeFileSync(fullPath, generateSingleFile(icons, format), "utf-8");
+  }
+  return output;
+}
+
+/** Validate a `--format` value, exiting with a message when it is unknown. */
+function parseFormat(value: unknown): IconFormat | undefined {
+  if (value === undefined) return undefined;
+  if (isIconFormat(value)) return value;
+  console.error(chalk.red(`Unknown format "${String(value)}". Use react, vue, svelte, svg, or json.`));
+  process.exit(1);
+}
+
+/** Split a comma- or space-separated list of icon references. */
+function parseIconList(value: string): string[] {
+  return value.split(/[\s,]+/).map((ref) => ref.trim()).filter(Boolean);
 }
 
 /**
- * Generate JSX attributes (camelCase) for React components.
- * Uses curly braces for numeric values (strokeWidth={2}).
+ * Fetch a config bundle's icons and write them to its output.
+ *
+ * @returns The number of icons and where they went, or a reason it was skipped
  */
-function getJsxAttributes(icon: Icon): string {
-  const mode = getIconRenderMode(icon.sourceId);
-  
-  if (mode === "fill") {
-    return 'fill="currentColor"';
+async function syncBundle(
+  bundle: BundleConfig,
+  options: { useCache?: boolean; dryRun?: boolean } = {}
+): Promise<{ count: number; written: string; missing: string[] } | { skipped: string }> {
+  if (!bundle.icons?.length && !bundle.query && !bundle.category && !bundle.source) {
+    return { skipped: "no icons, query, category, or source specified" };
   }
-  
-  const strokeWidth = parseFloat(icon.strokeWidth || "2") || DEFAULT_STROKE.strokeWidth;
-  
-  return [
-    'fill="none"',
-    'stroke="currentColor"',
-    `strokeWidth={${strokeWidth}}`,
-    `strokeLinecap="${DEFAULT_STROKE.strokeLinecap}"`,
-    `strokeLinejoin="${DEFAULT_STROKE.strokeLinejoin}"`,
-  ].join(" ");
+
+  let format: IconFormat;
+  if (bundle.format === undefined) {
+    format = getFormatForFramework(detectFramework().framework);
+  } else if (isIconFormat(bundle.format)) {
+    format = bundle.format;
+  } else {
+    throw new Error(`unknown format "${String(bundle.format)}"`);
+  }
+
+  let icons: Icon[] = [];
+  let missing: string[] = [];
+  if (bundle.icons?.length) {
+    ({ icons, missing } = await fetchIconsByRefs(bundle.icons, bundle.source, { useCache: options.useCache ?? true }));
+  }
+  if (bundle.query || bundle.category || (!bundle.icons?.length && bundle.source)) {
+    const { icons: found } = await fetchIcons(
+      { query: bundle.query, category: bundle.category, source: bundle.source, limit: bundle.limit || 100 },
+      { useCache: options.useCache ?? true }
+    );
+    const seen = new Set(icons.map((icon) => icon.id));
+    icons.push(...found.filter((icon) => !seen.has(icon.id)));
+  }
+
+  if (icons.length === 0) return { skipped: missing.length ? `not found: ${missing.join(", ")}` : "no icons found" };
+  const written = writeIconSet(icons, format, bundle.output, { dryRun: options.dryRun ?? false });
+  return { count: icons.length, written, missing };
 }
 
-function generateReactComponents(icons: Icon[]): string {
-  const components = icons.map((icon) => {
-    const name = toPascalCase(icon.normalizedName);
-    const attrs = getJsxAttributes(icon);
-    return `export function ${name}({ className, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="${icon.viewBox}"
-      ${attrs}
-      aria-hidden="true"
-      focusable="false"
-      className={className}
-      {...props}
-    >
-      ${icon.content}
-    </svg>
-  );
-}`;
-  });
-
-  return `/**
- * Icon components generated by @webrenew/unicon
- * @see https://unicon.sh
- */
-import type { SVGProps } from "react";
-
-${components.join("\n\n")}
-`;
-}
-
-function generateSvgBundle(icons: Icon[]): string {
-  return icons
-    .map((icon) => {
-      const attrs = getSvgAttributes(icon);
-      return `<!-- ${icon.normalizedName} -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="${icon.viewBox}" ${attrs} aria-hidden="true" focusable="false">
-  ${icon.content}
-</svg>`;
-    })
-    .join("\n\n");
-}
-
-function generateJsonBundle(icons: Icon[]): string {
-  return JSON.stringify(
-    icons.map((icon) => ({
-      id: icon.id,
-      name: icon.normalizedName,
-      source: icon.sourceId,
-      viewBox: icon.viewBox,
-      content: icon.content,
-      tags: icon.tags,
-      category: icon.category,
-    })),
-    null,
-    2
-  );
-}
+/** Libraries on unicon.sh, as `--source` IDs. */
+const ICON_SOURCES: ReadonlyArray<readonly [string, string]> = [
+  ["lucide", "Lucide (stroke)"],
+  ["phosphor", "Phosphor (fill)"],
+  ["hugeicons", "Hugeicons (stroke)"],
+  ["heroicons", "Heroicons (outline and solid)"],
+  ["tabler", "Tabler (stroke)"],
+  ["feather", "Feather (stroke)"],
+  ["remix", "Remix Icon (fill)"],
+  ["iconoir", "Iconoir (stroke and solid)"],
+  ["simple-icons", "Simple Icons (brand logos, fill)"],
+];
 
 const program = new Command();
 
@@ -938,7 +966,7 @@ program
 program
   .command("search <query>")
   .description("Search for icons by name or keyword")
-  .option("-s, --source <source>", "Filter by source (lucide, phosphor, hugeicons)")
+  .option("-s, --source <source>", "Filter by source (lucide, phosphor, simple-icons, ...; see `unicon sources`)")
   .option("-c, --category <category>", "Filter by category")
   .option("-l, --limit <number>", "Maximum number of results", "20")
   .option("-j, --json", "Output as JSON")
@@ -1013,18 +1041,7 @@ program
 
         switch (action) {
           case "copy": {
-            const components = selectedIcons.map(icon => {
-              const name = toPascalCase(icon.normalizedName);
-              const jsxAttrs = getJsxAttributes(icon);
-              return `export function ${name}({ className, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="${icon.viewBox}" ${jsxAttrs} aria-hidden="true" focusable="false" className={className} {...props}>
-      ${icon.content}
-    </svg>
-  );
-}`;
-            });
-            const content = `import type { SVGProps } from "react";\n\n${components.join("\n\n")}`;
+            const content = generateSingleFile(selectedIcons, "react");
             const success = await copyToClipboard(content);
             if (success) {
               console.log(chalk.green(`✓ ${selectedIcons.length} icon(s) copied to clipboard`));
@@ -1044,20 +1061,7 @@ program
             const outDir = resolve(process.cwd(), outputPath as string);
             mkdirSync(outDir, { recursive: true });
 
-            for (const icon of selectedIcons) {
-              const name = toPascalCase(icon.normalizedName);
-              const jsxAttrs = getJsxAttributes(icon);
-              const content = `import type { SVGProps } from "react";
-
-export function ${name}({ className, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="${icon.viewBox}" ${jsxAttrs} aria-hidden="true" focusable="false" className={className} {...props}>
-      ${icon.content}
-    </svg>
-  );
-}`;
-              writeFileSync(join(outDir, `${icon.normalizedName}.tsx`), content, "utf-8");
-            }
+            writeGeneratedFiles(outDir, generateSplitFiles(selectedIcons, getFormatForFramework(detectFramework().framework)));
             console.log(chalk.green(`✓ ${selectedIcons.length} icon(s) saved to ${outputPath}`));
             break;
           }
@@ -1081,12 +1085,11 @@ export function ${name}({ className, ...props }: SVGProps<SVGSVGElement>) {
               config = { bundles: [] };
             }
 
-            const iconNames = selectedIcons.map(i => i.normalizedName).join(" ");
             const newBundle: BundleConfig = {
               name: bundleName as string,
-              query: iconNames,
+              icons: selectedIcons.map((i) => i.id),
               format,
-              output: `./src/icons/${bundleName}.tsx`,
+              output: `./src/icons/${bundleName}`,
             };
 
             config.bundles.push(newBundle);
@@ -1128,7 +1131,7 @@ export function ${name}({ className, ...props }: SVGProps<SVGSVGElement>) {
 program
   .command("info <name>")
   .description("Show detailed information about an icon")
-  .option("-s, --source <source>", "Prefer source (lucide, phosphor, hugeicons)")
+  .option("-s, --source <source>", "Prefer source (lucide, phosphor, simple-icons, ...; see `unicon sources`)")
   .action(async (name: string, options) => {
     const spinner = ora("Fetching icon info...").start();
 
@@ -1174,33 +1177,29 @@ program
 // Get command - copy a single icon (like shadcn add)
 program
   .command("get <name>")
-  .description("Get a single icon by name (outputs to stdout)")
-  .option("-s, --source <source>", "Prefer source (lucide, phosphor, hugeicons)")
+  .description("Get one icon by exact name (outputs to stdout)")
+  .option("-s, --source <source>", "Library to take the icon from (lucide, phosphor, simple-icons, ...)")
   .option("-f, --format <format>", "Output format: react, vue, svelte, svg, json")
   .option("-o, --output <path>", "Write to file instead of stdout")
   .option("-c, --copy", "Copy to clipboard instead of stdout")
   .action(async (name: string, options) => {
     try {
-      const { icons } = await fetchIcons({
-        query: name,
-        source: options.source,
-        limit: 10,
-      });
-
-      // Find exact match first, then partial
-      const exactMatch = icons.find(
-        (i) => i.normalizedName === name || i.normalizedName === name.toLowerCase()
-      );
-      const icon = exactMatch || icons[0];
+      const { icons } = await fetchIconsByRefs([name], options.source);
+      const icon = icons[0];
 
       if (!icon) {
-        console.error(chalk.red(`Icon "${name}" not found.`));
-        console.error(chalk.dim(`Try: unicon search "${name}"`));
+        const where = options.source ? ` in ${options.source}` : "";
+        console.error(chalk.red(`No icon is named "${name}"${where}.`));
+        const { icons: similar } = await fetchIcons({ query: name.replace(/^[^:]*:/, ""), source: options.source, limit: 5 }).catch(() => ({ icons: [] as Icon[] }));
+        if (similar.length > 0) {
+          console.error(chalk.dim(`Similar: ${similar.map((i) => `${i.sourceId}:${i.normalizedName}`).join(", ")}`));
+        }
+        console.error(chalk.dim(`Search with: unicon search "${name}"${options.source ? ` --source ${options.source}` : ""}`));
         process.exit(1);
       }
 
       // Auto-detect format if not specified
-      let format = options.format;
+      let format = parseFormat(options.format);
       if (!format) {
         const { framework, reason } = detectFramework();
         format = getFormatForFramework(framework);
@@ -1209,86 +1208,8 @@ program
         }
       }
 
-      let content: string;
-      const componentName = toPascalCase(icon.normalizedName);
-      const svgAttrs = getSvgAttributes(icon);
-      const jsxAttrs = getJsxAttributes(icon);
-
-      switch (format) {
-        case "svg":
-          content = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${icon.viewBox}" ${svgAttrs} aria-hidden="true" focusable="false">
-  ${icon.content}
-</svg>`;
-          break;
-        case "json":
-          content = JSON.stringify({
-            name: icon.normalizedName,
-            source: icon.sourceId,
-            viewBox: icon.viewBox,
-            content: icon.content,
-          }, null, 2);
-          break;
-        case "vue":
-          content = `<!-- Generated by @webrenew/unicon - https://unicon.sh -->
-<template>
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="${icon.viewBox}"
-    ${svgAttrs}
-    aria-hidden="true"
-    :focusable="false"
-    :class="className"
-    v-bind="$attrs"
-  >
-    ${icon.content}
-  </svg>
-</template>
-
-<script setup lang="ts">
-defineProps<{ className?: string }>();
-</script>`;
-          break;
-        case "svelte":
-          content = `<!-- Generated by @webrenew/unicon - https://unicon.sh -->
-<script lang="ts">
-  let className: string = "";
-  export { className as class };
-</script>
-
-<svg
-  xmlns="http://www.w3.org/2000/svg"
-  viewBox="${icon.viewBox}"
-  ${svgAttrs}
-  aria-hidden="true"
-  focusable="false"
-  class={className}
-  {...$$restProps}
->
-  ${icon.content}
-</svg>`;
-          break;
-        case "react":
-        default:
-          content = `// Generated by @webrenew/unicon - https://unicon.sh
-import type { SVGProps } from "react";
-
-export function ${componentName}({ className, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="${icon.viewBox}"
-      ${jsxAttrs}
-      aria-hidden="true"
-      focusable="false"
-      className={className}
-      {...props}
-    >
-      ${icon.content}
-    </svg>
-  );
-}`;
-          break;
-      }
+      const componentName = toComponentName(icon.normalizedName);
+      const content = generateIconFile(icon, format, componentName);
 
       // Handle output: clipboard, file, or stdout
       if (options.copy) {
@@ -1300,10 +1221,13 @@ export function ${componentName}({ className, ...props }: SVGProps<SVGSVGElement
           process.exit(1);
         }
       } else if (options.output) {
-        const fullPath = resolve(process.cwd(), options.output);
+        const output: string = isDirectoryPath(options.output)
+          ? join(options.output, `${icon.normalizedName}.${FILE_EXTENSIONS[format]}`)
+          : options.output;
+        const fullPath = resolve(process.cwd(), output);
         mkdirSync(dirname(fullPath), { recursive: true });
         writeFileSync(fullPath, content, "utf-8");
-        console.error(chalk.green(`✓ ${componentName} → ${options.output}`));
+        console.error(chalk.green(`✓ ${icon.id} → ${output}`));
       } else {
         // Output to stdout (no colors, pipe-friendly)
         console.log(content);
@@ -1317,257 +1241,84 @@ export function ${componentName}({ className, ...props }: SVGProps<SVGSVGElement
 // Bundle command
 program
   .command("bundle")
-  .description("Bundle icons for tree-shakeable imports (split by default for components)")
+  .description("Write a set of icons: one file per icon in a directory, or one file")
   .option("-q, --query <query>", "Search query")
+  .option("-i, --icons <icons>", "Exact icons, comma-separated: home,lucide:settings")
   .option("-c, --category <category>", "Filter by category")
-  .option("-s, --source <source>", "Filter by source (lucide, phosphor, hugeicons)")
+  .option("-s, --source <source>", "Filter by source (lucide, phosphor, simple-icons, ...)")
   .option("-f, --format <format>", "Output format: react, vue, svelte, svg, json")
-  .option("-o, --output <path>", "Output file/directory path")
-  .option("-l, --limit <number>", "Maximum number of icons", "100")
-  .option("--single-file", "Combine all icons into one file (not recommended for components)")
+  .option("-o, --output <path>", "Output directory (one file per icon) or file (one file)", "./icons")
+  .option("-l, --limit <number>", "Maximum number of icons from a search", "100")
+  .option("--single-file", "Combine all icons into one file in the output directory (react, svg, json)")
   .option("--stars", "Bundle all favorited icons")
   .action(async (options) => {
-    // Check for --stars flag
+    let refs: string[] | undefined = options.icons ? parseIconList(options.icons) : undefined;
+
     if (options.stars) {
       const favorites = loadFavorites();
       if (favorites.favorites.length === 0) {
         console.log(chalk.yellow("No favorited icons. Use 'unicon star <name>' to add favorites."));
         process.exit(1);
       }
-      // Convert favorites to query
-      options.query = favorites.favorites.map(f => f.name).join(" ");
+      refs = favorites.favorites.map((f) => `${f.sourceId}:${f.name}`);
     }
 
-    if (!options.query && !options.category && !options.source) {
-      console.log(
-        chalk.yellow("Please provide at least one filter: --query, --category, --source, or --stars")
-      );
+    if (!refs && !options.query && !options.category && !options.source) {
+      console.log(chalk.yellow("Please provide at least one of: --icons, --query, --category, --source, or --stars"));
       process.exit(1);
     }
 
-    // Auto-detect format if not specified
-    if (!options.format) {
+    let format = parseFormat(options.format);
+    if (!format) {
       const { framework, reason } = detectFramework();
-      options.format = getFormatForFramework(framework);
-      if (framework) {
-        console.log(chalk.dim(`Auto-detected: ${reason} → ${options.format}`));
+      format = getFormatForFramework(framework);
+      if (framework) console.log(chalk.dim(`Auto-detected: ${reason} → ${format}`));
+    }
+
+    let output: string = options.output;
+    if (options.singleFile) {
+      if (COMPONENT_FORMATS.has(format) && format !== "react") {
+        console.log(chalk.red(`Error: --single-file is not supported for ${format}. Vue and Svelte need one component per file.`));
+        process.exit(1);
       }
+      if (isDirectoryPath(output)) output = join(output, `icons.${FILE_EXTENSIONS[format]}`);
     }
-
-    const isComponentFormat = ["react", "vue", "svelte"].includes(options.format);
-    
-    // Vue/Svelte MUST use split mode - single file is invalid syntax
-    if ((options.format === "vue" || options.format === "svelte") && options.singleFile) {
-      console.log(
-        chalk.red(`Error: --single-file is not supported for ${options.format} format.`)
-      );
-      console.log(
-        chalk.dim(`Vue and Svelte require one component per file. Remove --single-file.`)
-      );
-      process.exit(1);
-    }
-
-    // Default to split mode for component formats (tree-shakeable)
-    const useSplitMode = isComponentFormat && !options.singleFile;
 
     const spinner = ora("Fetching icons...").start();
 
     try {
-      const { icons } = await fetchIcons({
-        query: options.query,
-        category: options.category,
-        source: options.source,
-        limit: parseInt(options.limit, 10),
-      });
+      let icons: Icon[];
+      if (refs) {
+        const result = await fetchIconsByRefs(refs, options.source);
+        icons = result.icons;
+        if (result.missing.length > 0) {
+          spinner.warn(chalk.yellow(`Not found: ${result.missing.join(", ")}. Check names with unicon search.`));
+          spinner.start("Writing icons...");
+        }
+      } else {
+        ({ icons } = await fetchIcons({
+          query: options.query,
+          category: options.category,
+          source: options.source,
+          limit: parseInt(options.limit, 10),
+        }));
+      }
 
       if (icons.length === 0) {
         spinner.fail("No icons found matching your criteria");
         process.exit(1);
       }
 
-      // Warn if using single-file mode with many icons
-      if (options.singleFile && icons.length > 10) {
-        spinner.warn(
-          chalk.yellow(`Bundling ${icons.length} icons into a single file is not tree-shakeable.`)
-        );
-        console.log(chalk.dim(`  Consider removing --single-file for better bundle optimization.\n`));
-        spinner.start("Generating bundle...");
-      }
+      const written = writeIconSet(icons, format, output);
+      spinner.succeed(`${chalk.green(icons.length)} icons → ${chalk.cyan(written)}`);
 
-      // Split mode - one file per icon (default for components)
-      if (useSplitMode) {
-        const outDir = options.output || "./icons";
-        const fullDir = resolve(process.cwd(), outDir);
-        mkdirSync(fullDir, { recursive: true });
-
-        spinner.text = `Writing ${icons.length} icons to ${outDir}/...`;
-
-        const extMap: Record<string, string> = {
-          react: "tsx",
-          vue: "vue",
-          svelte: "svelte",
-          svg: "svg",
-          json: "json",
-        };
-        const ext = extMap[options.format] || "tsx";
-
-        for (const icon of icons) {
-          const fileName = `${icon.normalizedName}.${ext}`;
-          const filePath = join(fullDir, fileName);
-          const name = toPascalCase(icon.normalizedName);
-          const svgAttrs = getSvgAttributes(icon);
-          const jsxAttrs = getJsxAttributes(icon);
-          let content: string;
-
-          switch (options.format) {
-            case "svg":
-              content = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${icon.viewBox}" ${svgAttrs} aria-hidden="true" focusable="false">\n  ${icon.content}\n</svg>`;
-              break;
-            case "json":
-              content = JSON.stringify({
-                name: icon.normalizedName,
-                source: icon.sourceId,
-                viewBox: icon.viewBox,
-                content: icon.content,
-              }, null, 2);
-              break;
-            case "vue":
-              content = `<!-- Generated by @webrenew/unicon -->
-<template>
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="${icon.viewBox}"
-    ${svgAttrs}
-    aria-hidden="true"
-    :focusable="false"
-    :class="className"
-    v-bind="$attrs"
-  >
-    ${icon.content}
-  </svg>
-</template>
-
-<script setup lang="ts">
-defineProps<{ className?: string }>();
-</script>
-`;
-              break;
-            case "svelte":
-              content = `<!-- Generated by @webrenew/unicon -->
-<script lang="ts">
-  let className: string = "";
-  export { className as class };
-</script>
-
-<svg
-  xmlns="http://www.w3.org/2000/svg"
-  viewBox="${icon.viewBox}"
-  ${svgAttrs}
-  aria-hidden="true"
-  focusable="false"
-  class={className}
-  {...$$restProps}
->
-  ${icon.content}
-</svg>
-`;
-              break;
-            case "react":
-            default:
-              content = `// @webrenew/unicon
-import type { SVGProps } from "react";
-
-export function ${name}({ className, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="${icon.viewBox}"
-      ${jsxAttrs}
-      aria-hidden="true"
-      focusable="false"
-      className={className}
-      {...props}
-    >
-      ${icon.content}
-    </svg>
-  );
-}
-`;
-              break;
-          }
-
-          writeFileSync(filePath, content, "utf-8");
-        }
-
-        // Generate index file for component formats
-        if (["react", "vue", "svelte"].includes(options.format)) {
-          let indexContent: string;
-          
-          if (options.format === "react") {
-            // React: named exports
-            indexContent = `// Tree-shakeable re-exports. Add "sideEffects": false to package.json.
-${icons.map((icon) => `export { ${toPascalCase(icon.normalizedName)} } from "./${icon.normalizedName}";`).join("\n")}
-`;
-          } else {
-            // Vue/Svelte: default exports from SFCs
-            indexContent = `// Tree-shakeable re-exports. Add "sideEffects": false to package.json.
-${icons.map((icon) => `export { default as ${toPascalCase(icon.normalizedName)} } from "./${icon.normalizedName}.${ext}";`).join("\n")}
-`;
-          }
-          
-          writeFileSync(join(fullDir, "index.ts"), indexContent, "utf-8");
-        }
-
-        spinner.succeed(`${chalk.green(icons.length)} icons → ${chalk.cyan(outDir)}/`);
-        console.log(chalk.green(`  ✓ Tree-shakeable! Only imported icons will be bundled.`));
-        console.log(chalk.dim(`  Import: import { Home, Settings } from "${outDir}";`));
-        return;
-      }
-
-      // Single-file mode (only for svg, json, or react with --single-file)
-      spinner.text = `Generating ${options.format} bundle for ${icons.length} icons...`;
-
-      let content: string;
-      let ext: string;
-
-      switch (options.format) {
-        case "svg":
-          content = generateSvgBundle(icons);
-          ext = "svg";
-          break;
-        case "json":
-          content = generateJsonBundle(icons);
-          ext = "json";
-          break;
-        case "react":
-        default:
-          content = generateReactComponents(icons);
-          ext = "tsx";
-          break;
-      }
-
-      const outputPath = options.output || `icons.${ext}`;
-      const fullPath = resolve(process.cwd(), outputPath);
-
-      // Ensure directory exists
-      mkdirSync(dirname(fullPath), { recursive: true });
-      writeFileSync(fullPath, content, "utf-8");
-
-      spinner.succeed(
-        `Bundled ${chalk.green(icons.length)} icons to ${chalk.cyan(outputPath)}`
-      );
-
-      // Show summary and warnings
       const sources = [...new Set(icons.map((i) => i.sourceId))];
-      console.log(chalk.dim(`  Sources: ${sources.join(", ")}`));
-      console.log(chalk.dim(`  Format: ${options.format}`));
-      
-      // Warn about tree-shaking for React single-file
-      if (options.format === "react") {
-        console.log();
-        console.log(chalk.yellow(`  ⚠ Single-file mode is NOT tree-shakeable.`));
-        console.log(chalk.dim(`    All ${icons.length} icons will be included in your bundle.`));
-        console.log(chalk.dim(`    For tree-shaking, remove --single-file flag.`));
+      console.log(chalk.dim(`  Sources: ${sources.join(", ")}  Format: ${format}`));
+      if (isDirectoryPath(output) && COMPONENT_FORMATS.has(format)) {
+        const importPath = output.replace(/[\\/]+$/, "");
+        console.log(chalk.dim(`  Import: import { ${toComponentName(icons[0]?.normalizedName ?? "icon")} } from "${/^\.{0,2}\//.test(importPath) ? importPath : `./${importPath}`}";`));
+      } else if (format === "react" && icons.length > 10) {
+        console.log(chalk.yellow(`  ⚠ One file with ${icons.length} components is not tree-shakeable. Use a directory output instead.`));
       }
     } catch (error) {
       spinner.fail("Bundle failed");
@@ -1612,11 +1363,16 @@ program
 program
   .command("sources")
   .description("List available icon sources/libraries")
-  .action(() => {
+  .option("-j, --json", "Output as JSON")
+  .action((options: { json?: boolean }) => {
+    if (options.json) {
+      console.log(JSON.stringify(ICON_SOURCES.map(([id, description]) => ({ id, description })), null, 2));
+      return;
+    }
     console.log(chalk.bold("Available icon sources:\n"));
-    console.log(`  ${chalk.green("•")} ${chalk.yellow("lucide")}    - Lucide Icons`);
-    console.log(`  ${chalk.green("•")} ${chalk.cyan("phosphor")}  - Phosphor Icons`);
-    console.log(`  ${chalk.green("•")} ${chalk.magenta("hugeicons")} - Huge Icons`);
+    for (const [id, label] of ICON_SOURCES) {
+      console.log(`  ${chalk.green("•")} ${chalk.yellow(id.padEnd(13))} ${label}`);
+    }
     console.log(
       chalk.dim(`\nUse ${chalk.white("unicon bundle --source <name>")} to export from a source.`)
     );
@@ -1693,14 +1449,7 @@ program
       // Step 2: Choose icon libraries
       const libraries = await p.multiselect({
         message: "Which icon libraries do you want to use?",
-        options: [
-          { value: "lucide", label: "Lucide", hint: "1,900+ stroke icons" },
-          { value: "phosphor", label: "Phosphor", hint: "1,500+ fill icons" },
-          { value: "heroicons", label: "Heroicons", hint: "292 Tailwind icons" },
-          { value: "tabler", label: "Tabler", hint: "4,600+ stroke icons" },
-          { value: "feather", label: "Feather", hint: "287 minimalist icons" },
-          { value: "simple-icons", label: "Simple Icons", hint: "3,300+ brand logos" },
-        ],
+        options: ICON_SOURCES.map(([value, hint]) => ({ value, label: value, hint })),
         required: false,
       });
 
@@ -1732,22 +1481,27 @@ program
         return;
       }
 
-      // Build config
-      const ext = selectedFormat === "react" ? "tsx" : selectedFormat;
+      const selectedLibraries = libraries as string[];
+
+      // Build config. Component formats write a directory per bundle (one
+      // file per icon); svg and json write one file.
+      const outputFor = (name: string): string =>
+        isIconFormat(selectedFormat) && COMPONENT_FORMATS.has(selectedFormat)
+          ? `${outputDir}/${name}`
+          : `${outputDir}/${name}.${isIconFormat(selectedFormat) ? FILE_EXTENSIONS[selectedFormat] : "tsx"}`;
       const bundles: BundleConfig[] = [];
 
       if (createStarter) {
         bundles.push({
           name: "common",
-          query: "home settings user search menu close check arrow-right arrow-left",
+          icons: ["home", "settings", "user", "search", "menu", "x", "check", "arrow-right", "arrow-left"],
+          ...(selectedLibraries[0] ? { source: selectedLibraries[0] } : {}),
           format: selectedFormat,
-          limit: 20,
-          output: `${outputDir}/common.${ext}`,
+          output: outputFor("common"),
         });
       }
 
       // Add library-specific bundles if selected
-      const selectedLibraries = libraries as string[];
       if (selectedLibraries.length > 0) {
         for (const lib of selectedLibraries) {
           bundles.push({
@@ -1755,7 +1509,7 @@ program
             source: lib,
             format: selectedFormat,
             limit: 50,
-            output: `${outputDir}/${lib}.${ext}`,
+            output: outputFor(lib),
           });
         }
       }
@@ -1829,52 +1583,19 @@ program
         const spinner = ora(`${bundle.name}: Fetching icons...`).start();
 
         try {
-          if (!bundle.query && !bundle.category && !bundle.source) {
-            spinner.warn(`${bundle.name}: Skipped (no query, category, or source specified)`);
+          const result = await syncBundle(bundle, { useCache: !options.watch, dryRun: options.dryRun });
+          if ("skipped" in result) {
+            spinner.warn(`${bundle.name}: Skipped (${result.skipped})`);
+            // A listed icon that does not exist is a typo to fix, not an empty search.
+            if (bundle.icons?.length) errorCount++;
             continue;
           }
-
-          const { icons } = await fetchIcons({
-            query: bundle.query,
-            category: bundle.category,
-            source: bundle.source,
-            limit: bundle.limit || 100,
-          }, { useCache: !options.watch }); // Disable cache in watch mode
-
-          if (icons.length === 0) {
-            spinner.warn(`${bundle.name}: No icons found`);
+          const verb = options.dryRun ? "would write" : "→";
+          spinner.succeed(`${bundle.name}: ${chalk.green(result.count)} icons ${verb} ${chalk.cyan(result.written)}`);
+          if (result.missing.length > 0) {
+            console.log(chalk.red(`  Not found: ${result.missing.join(", ")}. Check the names with unicon search.`));
+            errorCount++;
             continue;
-          }
-
-          // Auto-detect format if not specified
-          let format = bundle.format;
-          if (!format) {
-            const { framework } = detectFramework();
-            format = getFormatForFramework(framework);
-          }
-
-          let content: string;
-
-          switch (format) {
-            case "svg":
-              content = generateSvgBundle(icons);
-              break;
-            case "json":
-              content = generateJsonBundle(icons);
-              break;
-            case "react":
-            default:
-              content = generateReactComponents(icons);
-              break;
-          }
-
-          if (options.dryRun) {
-            spinner.info(`${bundle.name}: Would write ${icons.length} icons to ${bundle.output}`);
-          } else {
-            const fullPath = resolve(process.cwd(), bundle.output);
-            mkdirSync(dirname(fullPath), { recursive: true });
-            writeFileSync(fullPath, content, "utf-8");
-            spinner.succeed(`${bundle.name}: ${chalk.green(icons.length)} icons → ${chalk.cyan(bundle.output)}`);
           }
 
           successCount++;
@@ -1934,6 +1655,7 @@ program
       console.log(chalk.green(`✓ All ${successCount} bundles synced successfully`));
     } else {
       console.log(chalk.yellow(`Completed with ${errorCount} error${errorCount > 1 ? "s" : ""}`));
+      process.exitCode = 1;
     }
   });
 
@@ -1941,12 +1663,13 @@ program
 program
   .command("add <name>")
   .description("Add a new bundle to .uniconrc.json")
+  .option("-i, --icons <icons>", "Exact icons, comma-separated: home,lucide:settings")
   .option("-q, --query <query>", "Search query")
   .option("-c, --category <category>", "Filter by category")
   .option("-s, --source <source>", "Filter by source")
-  .option("-f, --format <format>", "Output format: react, svg, json", "react")
-  .option("-l, --limit <number>", "Maximum icons", "50")
-  .option("-o, --output <path>", "Output file path")
+  .option("-f, --format <format>", "Output format: react, vue, svelte, svg, json")
+  .option("-l, --limit <number>", "Maximum icons from a search", "50")
+  .option("-o, --output <path>", "Output directory or file")
   .action((name: string, options) => {
     let config = loadConfig();
     
@@ -1961,19 +1684,22 @@ program
       process.exit(1);
     }
 
-    if (!options.query && !options.category && !options.source) {
-      console.log(chalk.yellow("Please provide at least one filter: --query, --category, or --source"));
+    if (!options.icons && !options.query && !options.category && !options.source) {
+      console.log(chalk.yellow("Please provide at least one of: --icons, --query, --category, or --source"));
       process.exit(1);
     }
 
-    const ext = options.format === "json" ? "json" : options.format === "svg" ? "svg" : "tsx";
+    const format = parseFormat(options.format) ?? getFormatForFramework(detectFramework().framework);
+    // Vue and Svelte need a directory; React defaults to one too, so it is tree-shakeable.
+    const defaultOutput = COMPONENT_FORMATS.has(format) ? `./src/icons/${name}` : `./src/icons/${name}.${FILE_EXTENSIONS[format]}`;
     const newBundle: BundleConfig = {
       name,
-      output: options.output || `./src/icons/${name}.${ext}`,
-      format: options.format,
-      limit: parseInt(options.limit, 10),
+      output: options.output || defaultOutput,
+      format,
     };
 
+    if (options.icons) newBundle.icons = parseIconList(options.icons);
+    if (options.query || options.category || !options.icons) newBundle.limit = parseInt(options.limit, 10);
     if (options.query) newBundle.query = options.query;
     if (options.category) newBundle.category = options.category;
     if (options.source) newBundle.source = options.source;
@@ -1992,7 +1718,7 @@ program
 program
   .command("preview <name>")
   .description("Show ASCII art preview of an icon in the terminal")
-  .option("-s, --source <source>", "Prefer source (lucide, phosphor, hugeicons)")
+  .option("-s, --source <source>", "Prefer source (lucide, phosphor, simple-icons, ...; see `unicon sources`)")
   .option("-w, --width <number>", "Preview width", "20")
   .option("-h, --height <number>", "Preview height", "20")
   .action(async (name: string, options) => {
@@ -2407,7 +2133,7 @@ program
 program
   .command("star <name>")
   .description("Add an icon to favorites")
-  .option("-s, --source <source>", "Prefer source (lucide, phosphor, hugeicons)")
+  .option("-s, --source <source>", "Prefer source (lucide, phosphor, simple-icons, ...; see `unicon sources`)")
   .action(async (name: string, options) => {
     const spinner = ora("Finding icon...").start();
 
@@ -2493,8 +2219,9 @@ program
 
 program
   .command("bundle:add <bundle> <icons...>")
-  .description("Add icons to an existing bundle")
-  .action(async (bundleName: string, iconNames: string[]) => {
+  .description("Add exact icons (name or source:name) to a bundle in .uniconrc.json")
+  .option("--sync", "Sync the bundle afterwards without asking")
+  .action(async (bundleName: string, iconNames: string[], options: { sync?: boolean }) => {
     const config = loadConfig();
 
     if (!config) {
@@ -2510,60 +2237,37 @@ program
       process.exit(1);
     }
 
-    // Append icons to existing query
-    const existingQuery = bundle.query || "";
-    const newIcons = iconNames.join(" ");
-    bundle.query = existingQuery ? `${existingQuery} ${newIcons}` : newIcons;
+    // Append exact icons; keep any existing query as is
+    const refs = iconNames.flatMap(parseIconList);
+    bundle.icons = [...new Set([...(bundle.icons ?? []), ...refs])];
 
     // Save updated config
     const configPath = resolve(process.cwd(), CONFIG_FILE);
     writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 
     console.log(chalk.green(`✓ Added ${iconNames.length} icon(s) to bundle "${bundleName}"`));
-    console.log(chalk.dim(`  Query: ${bundle.query}`));
+    console.log(chalk.dim(`  Icons: ${bundle.icons.join(", ")}`));
     console.log();
 
-    // Re-sync the bundle
-    const shouldSync = await confirm("Sync bundle now?");
-    if (shouldSync) {
-      const spinner = ora(`${bundleName}: Fetching icons...`).start();
+    // Re-sync the bundle. Only ask when someone can answer.
+    const shouldSync = options.sync || (process.stdin.isTTY ? await confirm("Sync bundle now?") : false);
+    if (!shouldSync) {
+      console.log(chalk.dim(`Run ${chalk.white(`unicon sync --name ${bundleName}`)} to generate.`));
+      return;
+    }
 
-      try {
-        const { icons } = await fetchIcons({
-          query: bundle.query,
-          category: bundle.category,
-          source: bundle.source,
-          limit: bundle.limit || 100,
-        });
-
-        if (icons.length === 0) {
-          spinner.warn(`${bundleName}: No icons found`);
-          return;
-        }
-
-        const format = bundle.format || "react";
-        let content: string;
-
-        switch (format) {
-          case "svg":
-            content = generateSvgBundle(icons);
-            break;
-          case "json":
-            content = generateJsonBundle(icons);
-            break;
-          case "react":
-          default:
-            content = generateReactComponents(icons);
-            break;
-        }
-
-        const fullPath = resolve(process.cwd(), bundle.output);
-        mkdirSync(dirname(fullPath), { recursive: true });
-        writeFileSync(fullPath, content, "utf-8");
-        spinner.succeed(`${bundleName}: ${chalk.green(icons.length)} icons → ${chalk.cyan(bundle.output)}`);
-      } catch (error) {
-        spinner.fail(`${bundleName}: ${error instanceof Error ? error.message : "Unknown error"}`);
+    const spinner = ora(`${bundleName}: Fetching icons...`).start();
+    try {
+      const result = await syncBundle(bundle);
+      if ("skipped" in result) {
+        spinner.warn(`${bundleName}: Skipped (${result.skipped})`);
+        return;
       }
+      spinner.succeed(`${bundleName}: ${chalk.green(result.count)} icons → ${chalk.cyan(result.written)}`);
+      if (result.missing.length > 0) console.log(chalk.yellow(`  Not found: ${result.missing.join(", ")}`));
+    } catch (error) {
+      spinner.fail(`${bundleName}: ${error instanceof Error ? error.message : "Unknown error"}`);
+      process.exit(1);
     }
   });
 
@@ -2649,18 +2353,7 @@ program
 
       switch (action) {
         case "copy": {
-          const components = selectedIcons.map(icon => {
-            const name = toPascalCase(icon.normalizedName);
-            const jsxAttrs = getJsxAttributes(icon);
-            return `export function ${name}({ className, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="${icon.viewBox}" ${jsxAttrs} aria-hidden="true" focusable="false" className={className} {...props}>
-      ${icon.content}
-    </svg>
-  );
-}`;
-          });
-          const content = `import type { SVGProps } from "react";\n\n${components.join("\n\n")}`;
+          const content = generateSingleFile(selectedIcons, "react");
           const success = await copyToClipboard(content);
           p.outro(success
             ? chalk.green(`✓ ${selectedIcons.length} icon(s) copied to clipboard`)
@@ -2682,20 +2375,7 @@ program
           const outDir = resolve(process.cwd(), outputPath as string);
           mkdirSync(outDir, { recursive: true });
 
-          for (const icon of selectedIcons) {
-            const name = toPascalCase(icon.normalizedName);
-            const jsxAttrs = getJsxAttributes(icon);
-            const content = `import type { SVGProps } from "react";
-
-export function ${name}({ className, ...props }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="${icon.viewBox}" ${jsxAttrs} aria-hidden="true" focusable="false" className={className} {...props}>
-      ${icon.content}
-    </svg>
-  );
-}`;
-            writeFileSync(join(outDir, `${icon.normalizedName}.tsx`), content, "utf-8");
-          }
+          writeGeneratedFiles(outDir, generateSplitFiles(selectedIcons, getFormatForFramework(detectFramework().framework)));
           p.outro(chalk.green(`✓ ${selectedIcons.length} icon(s) saved to ${outputPath}`));
           break;
         }

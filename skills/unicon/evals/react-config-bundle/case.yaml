@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: react-config-bundle
+expected_outcome: |
+  A committed .uniconrc.json lists home, search, bell and user from Lucide as exact icons, `unicon sync` regenerates Home, Search, Bell and User components from it, and no dependency was added.
+context:
+  scaffold_script: place-files.sh

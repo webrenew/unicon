@@ -88,7 +88,7 @@ help choose a library.
 
 ### `unicon sources`
 
-List the icon libraries.
+List the nine icon libraries and their `--source` IDs.
 
 ### `unicon categories`
 
@@ -100,52 +100,62 @@ List the icon categories. `-j, --json` outputs JSON.
 
 ### `unicon get <name>`
 
-Write one icon to stdout, a file, or the clipboard.
+Write one icon to stdout, a file, a directory, or the clipboard.
 
-`name` is the icon name without the library prefix (`log-out`, not
-`lucide:log-out`). The CLI searches for the name and uses an exact match. If
-there is no exact match, it uses the closest result, which can be a different
-icon. Use names from `search` output.
+`name` is an exact icon name (`log-out`) or ID (`lucide:log-out`). If no icon
+has that name, `get` exits with code 1 and lists similar icons; it never
+substitutes a different icon. Use names from `search` output.
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-s, --source <source>` | Prefer this library | any |
+| `-s, --source <source>` | Library to take the icon from. Without it, Lucide, then the first library with that name | |
 | `-f, --format <format>` | `react`, `vue`, `svelte`, `svg`, `json` | from `package.json` |
-| `-o, --output <path>` | Write to this file | stdout |
+| `-o, --output <path>` | A file, or a directory (writes `<name>.<ext>` in it) | stdout |
 | `-c, --copy` | Copy to the clipboard | off |
 
 ```bash
-unicon get settings --source lucide -o src/components/icons/settings.tsx
-unicon get home --format vue -o src/components/icons/Home.vue
+unicon get settings --source lucide -o src/components/icons
+unicon get simple-icons:github -o src/components/icons/github.tsx
+unicon get home --format vue -o components/icons
 ```
 
 ### `unicon bundle`
 
-Write many icons at once, selected by query, category, library, or favorites.
+Write many icons at once: exact names, a search, or favorites.
 
 | Option | Description | Default |
 |--------|-------------|---------|
+| `-i, --icons <icons>` | Exact icons, comma-separated: `home,lucide:settings,simple-icons:github` | |
 | `-q, --query <query>` | Search query | |
-| `-c, --category <category>` | Category filter | |
-| `-s, --source <source>` | Library filter | all |
+| `-c, --category <category>` | Category filter for the search | |
+| `-s, --source <source>` | Library for bare `--icons` names, and filter for the search | all |
 | `-f, --format <format>` | `react`, `vue`, `svelte`, `svg`, `json` | from `package.json` |
-| `-o, --output <path>` | Output directory for components; output file for `svg`, `json`, or `--single-file` | `./icons` or `icons.<ext>` |
-| `-l, --limit <number>` | Maximum icons | 100 |
-| `--single-file` | Put every icon in one file. Not tree-shakeable, and not available for `vue` or `svelte` | off |
+| `-o, --output <path>` | A directory (one file per icon) or a file (every icon in one file) | `./icons` |
+| `-l, --limit <number>` | Maximum icons from a search | 100 |
+| `--single-file` | Write `icons.<ext>` inside the output directory instead of one file per icon. `react`, `svg`, `json` only | off |
 | `--stars` | Bundle the favorited icons | off |
 
-For component formats (`react`, `vue`, `svelte`), `bundle` writes one file
-per icon and an `index.ts` that re-exports them, so bundlers remove unused
-icons. For `svg` and `json` it writes one file: `svg` puts every icon in it
-as a separate `<svg>` element, which is not a valid standalone SVG. For
-individual `.svg` files, run `unicon get <name> --format svg -o <file>.svg`
-for each icon.
+Output, by path and format:
+
+- **Directory, `react`/`vue`/`svelte`:** one component per file and an
+  `index.ts` that re-exports them, so bundlers remove unused icons.
+- **Directory, `svg`/`json`:** one `.svg` or `.json` file per icon.
+- **File, `react`:** every component in one `.tsx` file (not tree-shakeable).
+- **File, `svg`:** an SVG sprite with a `<symbol id="<name>">` per icon, for
+  `<svg><use href="/icons.svg#home" /></svg>`.
+- **File, `json`:** a JSON array.
+- Vue and Svelte always need a directory.
+
+With `--icons`, names that do not exist are reported and the rest are
+written. When two libraries have an icon with the same name, the second file
+gets the library as a suffix (`home-tabler.tsx`, component `HomeTabler`).
 
 ```bash
-unicon bundle --query "social media" --source simple-icons -o src/components/icons/social
+unicon bundle --icons settings,log-out,user --source lucide -o src/components/icons
+unicon bundle --icons github,discord,x --source simple-icons --format svg -o public/logos
 unicon bundle --category Arrows --source lucide --limit 30 -o src/components/icons/arrows
+unicon bundle --icons home,menu,x --source lucide --format svg -o public/icons.svg
 unicon bundle --stars -o src/components/icons/favorites
-unicon bundle --query "logos" --format json -o src/data/logos.json
 ```
 
 ---
@@ -170,34 +180,36 @@ not generate code; run `unicon sync` afterwards.
 
 | Option | Description | Default |
 |--------|-------------|---------|
+| `-i, --icons <icons>` | Exact icons, comma-separated | |
 | `-q, --query <query>` | Search query | |
 | `-c, --category <category>` | Category filter | |
-| `-s, --source <source>` | Library filter | all |
-| `-f, --format <format>` | `react`, `svg`, or `json` | `react` |
-| `-l, --limit <number>` | Maximum icons | 50 |
-| `-o, --output <path>` | Output file | `./src/icons/<name>.<ext>` |
+| `-s, --source <source>` | Library for bare names, and search filter | all |
+| `-f, --format <format>` | `react`, `vue`, `svelte`, `svg`, `json` | from `package.json` |
+| `-l, --limit <number>` | Maximum icons from a search | 50 |
+| `-o, --output <path>` | Output directory or file | `./src/icons/<name>` (components), `./src/icons/<name>.<ext>` (svg, json) |
 
 ```bash
-unicon add nav --query "arrow chevron menu" --source lucide --limit 20
-unicon add social --category Social --source simple-icons
+unicon add nav --icons home,search,bell,user --source lucide
+unicon add social --icons github,discord,x --source simple-icons
+unicon add arrows --query "arrow chevron" --source lucide --limit 20
 ```
 
 ### `unicon bundle:add <bundle> <icons...>`
 
-Append names to an existing bundle's `query`, then sync that bundle. Bundles
-select icons by search, so check the result.
+Append exact icons (`name` or `source:name`) to a bundle's `icons` list.
+In a terminal it asks whether to sync the bundle; `--sync` syncs without
+asking. Without a terminal and without `--sync`, it only updates the config.
 
 ```bash
-unicon bundle:add nav home settings
+unicon bundle:add nav settings lucide:log-out --sync
 ```
 
 ### `unicon sync`
 
-Generate the code for each bundle in `.uniconrc.json`. Each bundle is written
-to one file at its `output` path. `sync` generates React or JSON only: `vue`
-and `svelte` bundles get React code, and `svg` bundles get several `<svg>`
-elements in one file. Use `unicon bundle` for Vue or Svelte components, and
-`unicon get` for individual `.svg` files.
+Generate the code for each bundle in `.uniconrc.json`, in the bundle's
+`format` at its `output`, as described in [config-file.md](config-file.md).
+`sync` exits with code 1 when a bundle fails or a listed icon does not exist,
+so it can run in CI.
 
 | Option | Description |
 |--------|-------------|
