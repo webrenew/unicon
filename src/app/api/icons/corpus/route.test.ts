@@ -37,7 +37,7 @@ describe("GET /api/icons/corpus", () => {
     resetIconCorpusMemoForTests();
     vi.mocked(checkPublicRateLimit).mockResolvedValue({ success: true, limit: 60, remaining: 59, reset: 0 });
     vi.mocked(getIconCorpusManifest).mockResolvedValue(manifest);
-    vi.mocked(getIconCorpusChunk).mockResolvedValue([row]);
+    vi.mocked(getIconCorpusChunk).mockResolvedValue({ version: manifest.version, rows: [row] });
   });
 
   it("should return the manifest with a short CDN cache", async () => {
@@ -64,6 +64,43 @@ describe("GET /api/icons/corpus", () => {
 
     expect(getIconCorpusChunk).toHaveBeenCalledTimes(1);
     expect(getIconCorpusManifest).toHaveBeenCalledTimes(1);
+  });
+
+  it("should return 409 without caching when the client's version is outdated", async () => {
+    const response = await GET(request("?chunk=0&v=19000-1600000000"));
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(await response.json()).toMatchObject({ version: manifest.version });
+    // The memoized manifest is re-read before rejecting the client's version.
+    expect(getIconCorpusManifest).toHaveBeenCalledTimes(2);
+    expect(getIconCorpusChunk).not.toHaveBeenCalled();
+  });
+
+  it("should accept a newer client version once the fresh manifest confirms it", async () => {
+    await GET(request());
+    const newer = { ...manifest, version: "19500-1800000000" };
+    vi.mocked(getIconCorpusManifest).mockResolvedValue(newer);
+    vi.mocked(getIconCorpusChunk).mockResolvedValue({ version: newer.version, rows: [row] });
+
+    const response = await GET(request(`?chunk=0&v=${newer.version}`));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ version: newer.version });
+  });
+
+  it("should return 409 and not cache a chunk when the data changes mid-request", async () => {
+    vi.mocked(getIconCorpusChunk).mockResolvedValueOnce({ version: "19458-1800000000", rows: [row] });
+
+    const stale = await GET(request(`?chunk=0&v=${manifest.version}`));
+    expect(stale.status).toBe(409);
+    expect(stale.headers.get("Cache-Control")).toBe("no-store");
+    expect(await stale.json()).toMatchObject({ version: "19458-1800000000" });
+
+    // The mismatch also invalidated the memoized manifest and chunk.
+    await GET(request("?chunk=0"));
+    expect(getIconCorpusManifest).toHaveBeenCalledTimes(2);
+    expect(getIconCorpusChunk).toHaveBeenCalledTimes(2);
   });
 
   it.each(["2", "-1", "abc", "1.5", ""])("should reject invalid chunk %j", async (chunk) => {

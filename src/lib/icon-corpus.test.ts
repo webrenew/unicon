@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getLoadedIconCorpus, loadIconCorpus, resetIconCorpusForTests } from "./icon-corpus";
+import {
+  RETRY_COOLDOWN_MS,
+  getLoadedIconCorpus,
+  loadIconCorpus,
+  resetIconCorpusForTests,
+  shouldLoadIconCorpus,
+} from "./icon-corpus";
 import { searchIconIndex } from "./icon-search";
 import type { IconCorpusRow } from "./icon-corpus-format";
 
@@ -17,6 +23,7 @@ describe("loadIconCorpus", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     resetIconCorpusForTests();
   });
 
@@ -59,5 +66,27 @@ describe("loadIconCorpus", () => {
     vi.spyOn(global, "fetch").mockResolvedValue(json({ error: "Rate limit exceeded" }, 429));
 
     await expect(loadIconCorpus()).rejects.toThrow(/429/);
+  });
+
+  it("should allow a retry after the cooldown and revalidate the manifest", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const fetchMock = vi.spyOn(global, "fetch").mockResolvedValueOnce(json({ error: "Rate limit exceeded" }, 429));
+
+    await expect(loadIconCorpus()).rejects.toThrow(/429/);
+    expect(shouldLoadIconCorpus()).toBe(false);
+
+    vi.setSystemTime(Date.now() + RETRY_COOLDOWN_MS + 1);
+    expect(shouldLoadIconCorpus()).toBe(true);
+
+    fetchMock.mockImplementation(async (input) => {
+      const chunk = new URL(String(input), "https://unicon.sh").searchParams.get("chunk");
+      if (chunk === null) return json({ version: "v1", total: 1, chunkSize: 1, chunks: 1 });
+      return json({ version: "v1", chunk: 0, rows: [rows[0]] });
+    });
+    const index = await loadIconCorpus();
+
+    expect(index.entries).toHaveLength(1);
+    expect(fetchMock.mock.calls[1]![1]).toEqual({ cache: "no-cache" });
+    expect(getLoadedIconCorpus()).toBe(index);
   });
 });

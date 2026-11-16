@@ -3,8 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { iconSearchCache } from "@/lib/search-cache";
 import { getLoadedIconCorpus, loadIconCorpus, shouldLoadIconCorpus } from "@/lib/icon-corpus";
 import { createIconSearchEntry, createIconSearchIndex, type IconSearchIndex } from "@/lib/icon-search";
+import { reportLocalSearch } from "@/lib/search-analytics-client";
 import type { IconData } from "@/types/icon";
 import { useIconBrowser } from "./use-icon-browser";
+
+vi.mock("@/lib/search-analytics-client", () => ({
+  reportLocalSearch: vi.fn(),
+}));
 
 vi.mock("@/lib/icon-corpus", () => ({
   getLoadedIconCorpus: vi.fn(() => null),
@@ -275,6 +280,24 @@ describe("useIconBrowser local corpus search", () => {
     expect(result.current.totalResults).toBe(2);
     expect(result.current.isLoading).toBe(false);
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("should report one analytics event per settled local search", async () => {
+    vi.mocked(getLoadedIconCorpus).mockReturnValue(corpus);
+    vi.mocked(reportLocalSearch).mockClear();
+    const { result } = renderHook(() => useIconBrowser({ initialIcons: [], totalCount: 0 }));
+
+    for (const prefix of ["a", "ar", "arr", "arro", "arrow"]) {
+      await act(async () => {
+        result.current.setSearch(prefix);
+        await tick();
+      });
+    }
+
+    await waitFor(() => expect(reportLocalSearch).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    expect(reportLocalSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ query: "arrow", resultCount: 2, sourceFilter: undefined }),
+    );
   });
 
   it("should filter and paginate locally when the corpus is loaded", async () => {
