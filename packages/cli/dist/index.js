@@ -1580,10 +1580,13 @@ async function fetchSkillsIndex() {
     throw new Error(`Failed to fetch skills registry: ${res.status}`);
   }
   const data = await res.json();
-  return data.skills;
+  const skills = Array.isArray(data) ? data : data.skills;
+  if (!Array.isArray(skills)) throw new Error("Unexpected skills registry format");
+  return skills;
 }
-async function fetchSkillContent(file) {
-  const res = await fetch(`${API_BASE}/skills/${file}`);
+async function fetchSkillContent(skill) {
+  const path = skill.publicPath ?? (skill.file ? `/skills/${skill.file}` : `/skills/${skill.id}.md`);
+  const res = await fetch(`${API_BASE}${path}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch skill: ${res.status}`);
   }
@@ -1631,7 +1634,7 @@ Available Skills (${skills.length}):
         console.log(chalk.dim(`Available: ${skills.map((s) => s.id).join(", ")}`));
         process.exit(1);
       }
-      const content = await fetchSkillContent(skill.file);
+      const content = await fetchSkillContent(skill);
       spinner.stop();
       if (options.output) {
         const fullPath = resolve(process.cwd(), options.output);

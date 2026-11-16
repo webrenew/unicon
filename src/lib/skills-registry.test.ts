@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { runInNewContext } from "node:vm";
 import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { skillEntries } from "./skills";
@@ -9,6 +10,9 @@ import { findStaleRegistryFiles, planSkillRegistry } from "./skills-registry";
 const ROOT_DIR = resolve(__dirname, "../..");
 const FRONTMATTER_PATTERN = /^---\n([\s\S]*?)\n---\n/;
 const MARKDOWN_LINK_PATTERN = /\]\(([^)#\s]+)(?:#[^)]*)?\)/g;
+/** `var X_default = '...';` — how tsup's text loader inlines a .md file. */
+const BUNDLED_TEXT_PATTERN = /^var \w+_default = ('(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*");$/gm;
+const CLI_EMBEDDED_SKILL = "unicon";
 
 function readFrontmatterField(markdown: string, field: string): string | undefined {
   const frontmatter = FRONTMATTER_PATTERN.exec(markdown)?.[1] ?? "";
@@ -18,6 +22,22 @@ function readFrontmatterField(markdown: string, field: string): string | undefin
 describe("skills registry", () => {
   it("should keep public/skills in sync with skills/ (run `pnpm skills:sync`)", () => {
     expect(findStaleRegistryFiles(ROOT_DIR)).toEqual([]);
+  });
+
+  it("should embed the current skill files in the committed CLI build (run `pnpm --dir packages/cli build`)", () => {
+    const bundle = readFileSync(join(ROOT_DIR, "packages/cli/dist/index.js"), "utf8");
+    const embedded = new Set(
+      [...bundle.matchAll(BUNDLED_TEXT_PATTERN)].map(([, literal]) => runInNewContext(literal ?? "''") as string)
+    );
+    const skillDir = join(ROOT_DIR, "skills", CLI_EMBEDDED_SKILL);
+    const sources = [join(skillDir, "SKILL.md"), ...planSkillRegistry(ROOT_DIR)
+      .filter((file) => file.path.startsWith("references/"))
+      .map((file) => join(skillDir, file.path))
+      .filter((file) => existsSync(file))];
+
+    for (const source of sources) {
+      expect(embedded.has(readFileSync(source, "utf8")), `${source} is stale in packages/cli/dist`).toBe(true);
+    }
   });
 
   it("should reject two skills that publish the same reference path", () => {

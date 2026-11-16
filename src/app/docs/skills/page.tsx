@@ -21,6 +21,11 @@ const SUPPORTED_ASSISTANTS = [
 const ASSISTANT_IDS = SUPPORTED_ASSISTANTS.map((assistant) => assistant.id).join(", ");
 const SKILL_FILES = "SKILL.md, references/";
 
+/** The "Available Skills" section, from the registry so it matches the rendered cards. */
+const AVAILABLE_SKILLS_MARKDOWN = skillEntries
+  .map((skill) => `### ${skill.name}\n${skill.description}\n\nTags: ${skill.tags.join(", ")}\n\nDownload: https://unicon.sh${skill.publicPath}`)
+  .join("\n\n");
+
 const PAGE_MARKDOWN = `# Unicon Skills Registry
 
 Download Unicon skills for AI assistants. Install once and let your assistant generate icons on demand.
@@ -47,6 +52,7 @@ unicon skill [options]
 | \`--all\` | Install for all supported IDEs at once |
 | \`-l, --list\` | List all supported IDEs and their config paths |
 | \`-f, --force\` | Overwrite existing skill files |
+| \`-y, --yes\` | Skip the confirmation prompt |
 
 **Examples:**
 \`\`\`bash
@@ -82,19 +88,7 @@ unicon skills --json                 # List as JSON (for scripts)
 
 ## Available Skills
 
-### Unicon
-Help users add icons to React, Vue, Svelte, or web projects using the Unicon CLI and API.
-
-Tags: icons, cli, ai-assistants, api
-
-Download: https://unicon.sh/skills/unicon.md
-
-### Unicon MCP
-Guide setup and usage of the Unicon MCP server in Claude, Cursor, and other MCP clients.
-
-Tags: mcp, ai-assistants, icons, setup
-
-Download: https://unicon.sh/skills/unicon-mcp.md
+${AVAILABLE_SKILLS_MARKDOWN}
 
 ## Supported IDEs
 
