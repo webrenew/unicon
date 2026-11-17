@@ -72,3 +72,18 @@ test('unreviewed SQL cannot slip before or replace the RPC checkpoint', () => {
     assert.throws(() => repairStages(files, [repair]), /first exact post-baseline checkpoint/)
   }
 })
+
+test('reviewed table-grant changes must name every changed category and never defaults', async () => {
+  const sql = await readFile(new URL('./data-api-grants/snapshot.sql', import.meta.url), 'utf8')
+  const before = Object.fromEntries([...categories, 'defaults'].map(name => [name, []]))
+  const after = { ...before, relation_acl: [{ narrowed: true }], routines: [{ name: 'narrowed' }] }
+  const ledger = [{ version: '20260101000000' }]
+  const migrations = [{ filename: '20261117020000_narrow.sql', sql: 'select 1;' }]
+  const change = (changedCategories) => buildApplyTransaction(sql, before, ledger, migrations, summarize(before),
+    { snapshot: after, summary: summarize(after), changedCategories })
+  assert.throws(() => change(undefined), /must preserve current production metadata: relation_acl/)
+  assert.throws(() => change(['relation_acl']), /must preserve current production metadata: routines/)
+  assert.ok(change(['relation_acl', 'routines']).includes('if observed is distinct from expected_after then'))
+  assert.throws(() => change(['relation_acl', 'routines', 'defaults']), /Default privileges must not change/)
+  assert.throws(() => change(['relation_acl', 'routines', 'grants']), /Unknown reviewed change category/)
+})

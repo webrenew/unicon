@@ -51,25 +51,14 @@ do $$ declare result record; direct_write_rejected boolean := false; begin
   select * into result from public.create_bundle_atomic(
     '11111111-1111-1111-1111-111111111111','over-quota');
   if result.success is distinct from true then raise exception 'Free bundle creation failed'; end if;
-  -- Fill exactly to the 250-row cap before testing the next insert.
-  insert into public.bundles(user_id,name,icons)
-  select '11111111-1111-1111-1111-111111111111','filler-' || series_index,'[]'::jsonb
-  from generate_series(
-    1,
-    250 - (select count(*) from public.bundles
-      where user_id='11111111-1111-1111-1111-111111111111')
-  ) as series_index;
-  select * into result from public.create_bundle_atomic(
-    '11111111-1111-1111-1111-111111111111','over-cap');
-  if result.success is distinct from false then raise exception 'Bundle cap not enforced'; end if;
   begin
     insert into public.bundles(user_id,name,icons)
-    values('11111111-1111-1111-1111-111111111111','direct-over-cap','[]'::jsonb);
-  exception when raise_exception then
+    values('11111111-1111-1111-1111-111111111111','direct','[]'::jsonb);
+  exception when insufficient_privilege then
     direct_write_rejected := true;
   end;
   if not direct_write_rejected then
-    raise exception 'Direct bundle cap bypassed';
+    raise exception 'Direct client bundle insert allowed';
   end if;
   begin
     perform public.validate_api_token('uni_local_fixture_invalid');
@@ -84,6 +73,38 @@ do $$ begin
     raise exception 'Missing authenticated subject unexpectedly succeeded';
   exception when insufficient_privilege then null;
   end;
+end $$;
+reset role;
+
+-- Fill exactly to the 250-row cap as the owner; clients cannot insert directly.
+insert into public.bundles(user_id,name,icons)
+select '11111111-1111-1111-1111-111111111111','filler-' || series_index,'[]'::jsonb
+from generate_series(
+  1,
+  250 - (select count(*) from public.bundles
+    where user_id='11111111-1111-1111-1111-111111111111')
+) as series_index;
+set local role authenticated;
+set local "request.jwt.claim.sub"='11111111-1111-1111-1111-111111111111';
+do $$ declare result record; begin
+  select * into result from public.create_bundle_atomic(
+    '11111111-1111-1111-1111-111111111111','over-cap');
+  if result.success is distinct from false then raise exception 'Bundle cap not enforced'; end if;
+end $$;
+set local "request.jwt.claim.sub"='';
+reset role;
+-- The cap trigger also stops a direct insert by the server role.
+set local role service_role;
+do $$ declare direct_write_rejected boolean := false; begin
+  begin
+    insert into public.bundles(user_id,name,icons)
+    values('11111111-1111-1111-1111-111111111111','direct-over-cap','[]'::jsonb);
+  exception when raise_exception then
+    direct_write_rejected := true;
+  end;
+  if not direct_write_rejected then
+    raise exception 'Direct bundle cap bypassed';
+  end if;
 end $$;
 reset role;
 

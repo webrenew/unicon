@@ -18,7 +18,14 @@ export function buildApplyTransaction(snapshotSql, expected, ledger, migrations,
   assert.deepEqual(Object.keys(expectedAfter).sort(), [...categories, 'defaults'].sort(),
     'A complete reviewed post-state snapshot is required')
   assertSnapshotContract(expectedAfter, reviewedChange?.summary ?? reviewedSummary, 'Reviewed post-state snapshot')
-  for (const category of [...categories, 'defaults'].filter(name => name !== 'routines')) {
+  // A reviewed change names the categories it may change; by default only
+  // routines (the RPC repair). Default privileges never change in an apply.
+  const changing = new Set(reviewedChange?.changedCategories ?? ['routines'])
+  assert.ok(!changing.has('defaults'), 'Default privileges must not change in a reviewed apply')
+  for (const category of changing) {
+    assert.ok(categories.includes(category), `Unknown reviewed change category: ${category}`)
+  }
+  for (const category of [...categories, 'defaults'].filter(name => !changing.has(name))) {
     assert.deepEqual(expectedAfter[category], expected[category],
       `RPC repair must preserve current production metadata: ${category}`)
   }

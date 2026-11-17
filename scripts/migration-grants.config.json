@@ -1,5 +1,10 @@
 {
   "reviewedChangeMigrations": ["20261023010000_secure_bundle_rpc.sql"],
+  "pendingProductionMigrations": [
+    "20261117010000_remove_validate_api_token_is_pro.sql",
+    "20261117020000_narrow_client_role_privileges.sql"
+  ],
+  "pendingChangeCategories": ["relation_acl", "column_acl", "effective_relations", "effective_columns", "routines"],
   "rpcRepairTarget": "public.create_bundle_atomic(uuid, text, text, jsonb, text, boolean, numeric, boolean, text)",
   "mode": "migrations",
   "directory": "supabase/migrations",

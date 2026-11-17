@@ -209,7 +209,13 @@ function proof() {
   const stages = repairStages(replay.after, config.reviewedChangeMigrations)
   const repairedSummary = JSON.parse(readFileSync(join(root, 'scripts/data-api-grants/rpc-repair-summary.json'), 'utf8'))
   verifyReviewedRpcRepair(stages.repair, initial, beforeSummary, repairedSummary)
-  for (const name of stages.later) query(readFileSync(join(root, config.directory, name), 'utf8'))
+  const pending = config.pendingProductionMigrations ?? []
+  assert.deepEqual(stages.later.slice(stages.later.length - pending.length), pending,
+    'Pending production migrations must be the newest files, in order')
+  for (const name of stages.later.slice(0, stages.later.length - pending.length)) {
+    query(readFileSync(join(root, config.directory, name), 'utf8'))
+  }
+  if (pending.length) verifyPendingApply(pending, expected)
   const withBaseline = capture('with-baseline')
   assertReviewedRoleAccess(withBaseline, rolePlan)
   assertSnapshotContract(withBaseline, expected, join(outputDirectory, 'with-baseline.json'))
@@ -221,6 +227,7 @@ function proof() {
   }
   verifyServerRoleRecovery(withBaseline, readFileSync(join(root, baselineFile), 'utf8'))
   verifyRoleQueries(withBaseline)
+  verifyApplicationAccess(withBaseline)
   const routine = withBaseline.routines.find((row) =>
     row.effective_execute.some((access) => access.role === 'service_role' && access.execute))
   assert.ok(routine, 'Expected a callable backend routine')
@@ -254,6 +261,37 @@ function verifyReviewedRpcRepair(files, before, beforeSummary, expected) {
     beforeSummary, { snapshot: after, summary: expected }))
   assert.deepEqual(compareSnapshots(after, capture('after-reviewed-repair', false)), [],
     'Approved transition must reach exactly the reviewed post-state')
+}
+
+// Rehearses the production apply of the pending files: from the pinned
+// current production state, through the guarded transaction, to exactly the
+// reviewed post-state. An unreviewed extra grant rolls back SQL and ledger.
+function verifyPendingApply(files, expectedSummary) {
+  const before = capture('before-pending-apply', false)
+  const beforeSummary = JSON.parse(readFileSync(join(root, 'scripts/data-api-grants/before-pending-summary.json'), 'utf8'))
+  assertSnapshotContract(before, beforeSummary, 'before-pending-apply')
+  const migrations = files.map(filename => ({ filename,
+    sql: readFileSync(join(root, config.directory, filename), 'utf8') }))
+  const after = securityFixture('reviewed-pending-apply', migrations.map(row => row.sql).join('\n'))
+  assertSnapshotContract(after, expectedSummary, 'reviewed-pending-apply')
+  const beforeDigests = summarize(before)
+  const afterDigests = summarize(after)
+  assert.deepEqual(Object.keys(afterDigests).filter(category => afterDigests[category].sha256 !== beforeDigests[category].sha256),
+    config.pendingChangeCategories, 'Pending migrations must change exactly the reviewed categories')
+  const change = { snapshot: after, summary: expectedSummary, changedCategories: config.pendingChangeCategories }
+  const historySql = 'select jsonb_agg(to_jsonb(m) order by version) from supabase_migrations.schema_migrations m;'
+  const ledger = JSON.parse(query(historySql))
+  const unreviewed = migrations.map((row, index) => index < migrations.length - 1 ? row
+    : { ...row, sql: row.sql + '\ngrant execute on function public.check_device_code(text) to anon;' })
+  assert.throws(() => query(buildApplyTransaction(snapshotSql, before, ledger, unreviewed, beforeSummary, change)),
+    /Permission contract drift after migration/)
+  assert.deepEqual(JSON.parse(query(historySql)), ledger, 'A failed pending apply must roll back its ledger entries')
+  assert.deepEqual(compareSnapshots(before, capture('after-pending-rollback', false)), [],
+    'An unreviewed grant must roll back the entire pending apply')
+  query(buildApplyTransaction(snapshotSql, before, ledger, migrations, beforeSummary, change))
+  assert.deepEqual(compareSnapshots(after, capture('after-pending-apply', false)), [],
+    'The pending apply must reach exactly the reviewed post-state')
+  assert.equal(JSON.parse(query(historySql)).length, ledger.length + files.length)
 }
 
 function verifyAtomicApplication(expected) {
@@ -293,6 +331,22 @@ function verifyAtomicApplication(expected) {
     /Production permission contract changed/)
   assert.deepEqual(JSON.parse(query(historySql)), recorded, 'NULL-snapshot guard must not record a migration')
   assert.deepEqual(compareSnapshots(expected, capture('after-atomic-rollback', false)), [], 'Failed apply must roll back its ACL change')
+}
+
+// Real queries as each API role (#243): application paths work, cross-user
+// access and unused privileges fail. Everything rolls back.
+function verifyApplicationAccess(expected) {
+  const fixture = readFileSync(join(root, 'scripts/data-api-grants/application-access.sql'), 'utf8')
+  query(`begin;\n${fixture}\nrollback;`)
+  assert.throws(() => query(`begin;\ngrant insert on public.bundles to authenticated;\n${fixture}\nrollback;`),
+    /access check failed: direct bundle insert allowed/, 'A restored client insert grant must fail the access check')
+  // RLS also rejects user_id changes; team_id is guarded only by the column grant.
+  assert.throws(() => query(`begin;\ngrant update (team_id) on public.bundles to authenticated;\n${fixture}\nrollback;`),
+    /access check failed: bundles.team_id is writable/, 'A restored team column grant must fail the access check')
+  assert.throws(() => query(`begin;\ngrant execute on function public.check_device_code(text) to anon;\n${fixture}\nrollback;`),
+    /access check failed: anon check_device_code callable/, 'A restored anonymous RPC grant must fail the access check')
+  assert.deepEqual(compareSnapshots(expected, capture('after-application-access', false)), [],
+    'Application access checks must roll back')
 }
 
 function verifyRoleQueries(snapshot) {

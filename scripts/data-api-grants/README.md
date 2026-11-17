@@ -3,8 +3,9 @@
 The baseline records the existing production permissions before Supabase stops
 automatically exposing new public relations on October 30, 2026. It preserves
 legacy privileges, including privileges that RLS does not constrain; it is not
-a least-privilege redesign. Narrowing that access requires separate review:
-[unicon #243](https://github.com/webrenew/unicon/issues/243).
+a least-privilege redesign. `20261117020000_narrow_client_role_privileges.sql`
+narrows it ([unicon #243](https://github.com/webrenew/unicon/issues/243)); see
+"Pending production rollout" below.
 
 ## Verification
 
@@ -175,3 +176,47 @@ The proof pins the repair checkpoint separately in rpc-repair-summary.json.
 Future table/index migrations run after that checkpoint and use the final
 expected-summary.json and role/security contracts. They do not get folded into
 the RPC-only transaction or require rewriting the applied repair checkpoint.
+
+## Pending production rollout (#258, #243)
+
+Production is at `20261115190000_make_all_features_free.sql`. The pending files,
+in order, are listed in `pendingProductionMigrations`:
+
+1. `20261117010000_remove_validate_api_token_is_pro.sql` recreates
+   `validate_api_token(text)` without the always-FALSE `is_pro` column (#258).
+   Its EXECUTE stays service-only, and only the web server calls it.
+2. `20261117020000_narrow_client_role_privileges.sql` narrows client roles
+   (#243). service_role and default privileges do not change.
+   - **anon:** SELECT on `bundles`.
+   - **authenticated:** SELECT and DELETE on `bundles`, UPDATE of the columns
+     the PATCH route allows, and SELECT on `profiles`.
+   - **Everything else:** no client-role table privileges.
+   - **RPCs only the server calls become service-only:** the device-code
+     functions, cleanup, invite accept, the token and slug generators, and the
+     trigger functions. Triggers still fire.
+   - **Unchanged:** `get_user_team_ids()` and `is_team_admin(uuid)` keep anon
+     and authenticated EXECUTE, because bundle and team policies call them.
+
+`application-access.sql` proves the result with real queries as each role:
+- Application paths work.
+- Cross-user reads and writes, direct inserts, TRUNCATE, owner and team
+  column writes, and the service-only RPCs fail.
+- Negative controls restore single grants and must fail the check.
+
+The proof also rehearses the apply. It pins the current production state
+(`before-pending-summary.json`), applies both files through
+`buildApplyTransaction` with `changedCategories` from
+`pendingChangeCategories`, and requires the following:
+- An extra anonymous grant rolls back the SQL and the ledger.
+- The clean apply reaches exactly `expected-summary.json`.
+
+To apply:
+1. Take a fresh production snapshot and ledger, as in the production procedure
+   above.
+2. Require conformance to `before-pending-summary.json`.
+3. Pass the reviewed post-state as `{ snapshot, summary, changedCategories }`,
+   using the proof's `reviewed-pending-apply.json` routines and ACLs. Every
+   unchanged category comes from the fresh production snapshot.
+4. After merge, clear `pendingProductionMigrations` in the same change that
+   records the new production state.
+
