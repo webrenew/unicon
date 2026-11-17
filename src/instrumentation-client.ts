@@ -1,9 +1,15 @@
 import * as Sentry from "@sentry/nextjs";
+import { dropSentryLog, SENTRY_DATA_COLLECTION, SENTRY_TUNNEL_PATH } from "@/lib/sentry-options";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   environment: process.env.NEXT_PUBLIC_VERCEL_ENV || "development",
   tracesSampleRate: 0,
+  // Send events through this app (served by serveTunnelIntegration in
+  // instrumentation.ts) so ad blockers don't drop them.
+  tunnel: { path: SENTRY_TUNNEL_PATH },
+  dataCollection: SENTRY_DATA_COLLECTION,
+  beforeSendLog: dropSentryLog,
   replaysSessionSampleRate: 0,
   replaysOnErrorSampleRate: 1.0,
   integrations: [Sentry.replayIntegration()],

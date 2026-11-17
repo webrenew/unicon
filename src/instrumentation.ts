@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
 import { registerOTel } from "@vercel/otel";
+import { dropSentryLog, SENTRY_DATA_COLLECTION, SENTRY_TUNNEL_PATH } from "@/lib/sentry-options";
 
 // Mirror of the client-side filter (see instrumentation-client.ts). This is a
 // browser-only DOM crash and won't fire server-side, but keeping the configs
@@ -12,6 +13,7 @@ const ignoreErrors = [
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Vercel's OpenTelemetry (Observability); Sentry tracing is off below.
     registerOTel({
       serviceName: process.env.VERCEL_PROJECT_PRODUCTION_URL || "next-app",
       traceSampler: "traceidratio",
@@ -22,6 +24,9 @@ export async function register() {
       environment: process.env.VERCEL_ENV || "development",
       tracesSampleRate: 0,
       ignoreErrors,
+      dataCollection: SENTRY_DATA_COLLECTION,
+      beforeSendLog: dropSentryLog,
+      integrations: [Sentry.serveTunnelIntegration({ path: SENTRY_TUNNEL_PATH })],
     });
   }
 
@@ -31,6 +36,9 @@ export async function register() {
       environment: process.env.VERCEL_ENV || "development",
       tracesSampleRate: 0,
       ignoreErrors,
+      dataCollection: SENTRY_DATA_COLLECTION,
+      beforeSendLog: dropSentryLog,
+      integrations: [Sentry.serveTunnelIntegration({ path: SENTRY_TUNNEL_PATH })],
     });
   }
 }
