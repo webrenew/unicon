@@ -32,6 +32,8 @@ describe("Sentry instrumentation files", () => {
     expect(server.match(/dataCollection:\s*SENTRY_DATA_COLLECTION/g)).toHaveLength(2);
     expect(client).toMatch(/tunnel:\s*\{\s*path:\s*SENTRY_TUNNEL_PATH/);
     expect(client).toMatch(/dataCollection:\s*SENTRY_DATA_COLLECTION/);
+    expect(server.match(/beforeSendLog:\s*dropSentryLog/g)).toHaveLength(2);
+    expect(client).toMatch(/beforeSendLog:\s*dropSentryLog/);
     expect(SENTRY_TUNNEL_PATH).toBe("/monitoring");
   });
 });
@@ -45,6 +47,10 @@ describe("SENTRY_DATA_COLLECTION", () => {
       urlQueryParams: false,
       databaseQueryData: false,
       stackFrameVariables: false,
+    });
+    expect(SENTRY_DATA_COLLECTION.httpHeaders).toEqual({
+      request: { allow: ["accept", "content-type", "user-agent"] },
+      response: { allow: ["content-type"] },
     });
     const headers = JSON.stringify(SENTRY_DATA_COLLECTION.httpHeaders).toLowerCase();
     for (const credential of ["authorization", "cookie", "apikey", "x-api-key", "referer"]) {
