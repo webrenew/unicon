@@ -220,3 +220,15 @@ To apply:
 4. After merge, clear `pendingProductionMigrations` in the same change that
    records the new production state.
 
+The write policies on `api_sessions`, `profiles`, `teams`, `team_members` and
+`team_invites` stay in place as a second layer, but no client role can reach
+them without a table grant. They are not evidence that client writes are
+validated; re-granting a client write needs its own review.
+
+If client access misbehaves after rollout, re-grant only the privilege that
+broke (for example `GRANT EXECUTE ON FUNCTION ... TO authenticated;`) in a new
+reviewed migration rather than restoring the old blanket grants. To restore
+`is_pro`, drop `validate_api_token(text)` and recreate it from
+`20261115190000_make_all_features_free.sql`, then repeat its REVOKE/GRANT pair;
+the web server works with either result shape.
+

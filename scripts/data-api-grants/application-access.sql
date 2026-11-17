@@ -142,5 +142,10 @@ begin
   perform public.create_device_code('grants', 'read');
   perform public.check_device_code('grants');
   perform public.generate_invite_token(), public.generate_team_slug('grants');
+  perform public.cleanup_expired_device_codes();
+  if (select success from public.accept_team_invite_atomic('grants-missing',
+      '11111111-1111-1111-1111-111111111111', 'grants-a@example.test')) is distinct from false then
+    raise exception 'access check failed: service invite acceptance changed';
+  end if;
 end $service$;
 reset role;
