@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
 import { registerOTel } from "@vercel/otel";
+import { SENTRY_TUNNEL_PATH } from "@/lib/sentry-tunnel";
 
 // Mirror of the client-side filter (see instrumentation-client.ts). This is a
 // browser-only DOM crash and won't fire server-side, but keeping the configs
@@ -22,6 +23,7 @@ export async function register() {
       environment: process.env.VERCEL_ENV || "development",
       tracesSampleRate: 0,
       ignoreErrors,
+      integrations: [Sentry.serveTunnelIntegration({ path: SENTRY_TUNNEL_PATH })],
     });
   }
 
@@ -31,6 +33,7 @@ export async function register() {
       environment: process.env.VERCEL_ENV || "development",
       tracesSampleRate: 0,
       ignoreErrors,
+      integrations: [Sentry.serveTunnelIntegration({ path: SENTRY_TUNNEL_PATH })],
     });
   }
 }

@@ -1,9 +1,13 @@
 import * as Sentry from "@sentry/nextjs";
+import { SENTRY_TUNNEL_PATH } from "@/lib/sentry-tunnel";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   environment: process.env.NEXT_PUBLIC_VERCEL_ENV || "development",
   tracesSampleRate: 0,
+  // Send events through this app (served by serveTunnelIntegration in
+  // instrumentation.ts) so ad blockers don't drop them.
+  tunnel: { path: SENTRY_TUNNEL_PATH },
   replaysSessionSampleRate: 0,
   replaysOnErrorSampleRate: 1.0,
   integrations: [Sentry.replayIntegration()],
