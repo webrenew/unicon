@@ -192,8 +192,11 @@ in order, are listed in `pendingProductionMigrations`:
      the PATCH route allows, and SELECT on `profiles`.
    - **Everything else:** no client-role table privileges.
    - **RPCs only the server calls become service-only:** the device-code
-     functions, cleanup, invite accept, the token and slug generators, and the
-     trigger functions. Triggers still fire.
+     functions, cleanup, invite accept, `generate_secure_token`,
+     `generate_invite_token`, `generate_team_slug`, `generate_user_code`, and
+     the trigger functions. Triggers still fire.
+   - **`generate_share_slug()`** loses anon EXECUTE only; `authenticated` keeps
+     it because the bundles PATCH route calls it.
    - **Unchanged:** `get_user_team_ids()` and `is_team_admin(uuid)` keep anon
      and authenticated EXECUTE, because bundle and team policies call them.
 

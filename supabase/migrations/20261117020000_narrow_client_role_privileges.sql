@@ -15,7 +15,10 @@
 --             functions, which run as their owner.
 --
 -- RLS still decides which rows a client role sees; these grants decide which
--- operations it may attempt at all. TRUNCATE, REFERENCES, TRIGGER and
+-- operations it may attempt at all. The existing client write policies on
+-- api_sessions, profiles, teams, team_members and team_invites stay as a
+-- second layer but are unreachable without a grant: they do not mean client
+-- writes are validated, and re-granting one needs its own review. TRUNCATE, REFERENCES, TRIGGER and
 -- MAINTAIN are not needed by any client role and TRUNCATE ignores RLS.
 
 REVOKE ALL ON TABLE public.api_sessions FROM anon, authenticated;
