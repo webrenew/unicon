@@ -5,7 +5,7 @@ automatically exposing new public relations on October 30, 2026. It preserves
 legacy privileges, including privileges that RLS does not constrain; it is not
 a least-privilege redesign. `20261117020000_narrow_client_role_privileges.sql`
 narrows it ([unicon #243](https://github.com/webrenew/unicon/issues/243)); see
-"Pending production rollout" below.
+"Production rollout of #258 and #243" below.
 
 ## Verification
 
@@ -177,10 +177,13 @@ Future table/index migrations run after that checkpoint and use the final
 expected-summary.json and role/security contracts. They do not get folded into
 the RPC-only transaction or require rewriting the applied repair checkpoint.
 
-## Pending production rollout (#258, #243)
+## Production rollout of #258 and #243 (applied 2026-11-17)
 
-Production is at `20261115190000_make_all_features_free.sql`. The pending files,
-in order, are listed in `pendingProductionMigrations`:
+Applied to production on 2026-11-17 through the guarded transaction below. A
+fresh snapshot matched `before-pending-summary.json` before the apply and
+`expected-summary.json` after it, and both files are in the ledger.
+`pendingProductionMigrations` is empty again; the next rollout lists its files
+there and pins its own before-state. The files were:
 
 1. `20261117010000_remove_validate_api_token_is_pro.sql` recreates
    `validate_api_token(text)` without the always-FALSE `is_pro` column (#258).
