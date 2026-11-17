@@ -4,20 +4,20 @@
     "sha256": "d299db64ab33b6e700ed79d6bfe691a2a8a7d3ed2083a4415f0e94ec3465d431"
   },
   "relation_acl": {
-    "rows": 288,
-    "sha256": "569798dfab96ed199561b12f1e37a41fdb71fdf84df69ecd8b96f8f19469196f"
+    "rows": 148,
+    "sha256": "7ad056fd3803db4a7bbb0d00a392feadb4e3d41490187ea1757bf743a96637c2"
   },
   "column_acl": {
-    "rows": 0,
-    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    "rows": 10,
+    "sha256": "079d20b0c4869dd79f4140a3c97f269a473bf26575c6ffbbe7199c71c1532e94"
   },
   "effective_relations": {
     "rows": 216,
-    "sha256": "b414e3827911f12ada469264d290bdf10c3859c5d4422395351502e01431441d"
+    "sha256": "768f0020fa14aadca4991de56d2dd28c84b7d8e7f6b886f5db4225996ca07c39"
   },
   "effective_columns": {
     "rows": 960,
-    "sha256": "b2f933f55a756c9557a61208bc91dca9ca0354f30a466dc3663cc99c718c2346"
+    "sha256": "b20381c412031e99d2a1ece4e12a7a3e52bdaeec625dc8b2296ca7f130547392"
   },
   "roles": {
     "rows": 3,
@@ -37,6 +37,6 @@
   },
   "routines": {
     "rows": 22,
-    "sha256": "8a23f5a6198df33eacf31a3fe8725c6b9ed2a4e6a24e4b9896c083e984e0a282"
+    "sha256": "f3a62aa7b1b0e8b096408985f21ff985f5c88bfd3f4d6a7c50d5c902b1827b1c"
   }
 }

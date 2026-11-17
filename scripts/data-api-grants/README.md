@@ -3,8 +3,9 @@
 The baseline records the existing production permissions before Supabase stops
 automatically exposing new public relations on October 30, 2026. It preserves
 legacy privileges, including privileges that RLS does not constrain; it is not
-a least-privilege redesign. Narrowing that access requires separate review:
-[unicon #243](https://github.com/webrenew/unicon/issues/243).
+a least-privilege redesign. `20261117020000_narrow_client_role_privileges.sql`
+narrows it ([unicon #243](https://github.com/webrenew/unicon/issues/243)); see
+"Production rollout of #258 and #243" below.
 
 ## Verification
 
@@ -42,6 +43,23 @@ a policy expression and introduce an owner-rights view inside rolled-back
 transactions. A server SELECT revoke must fail and the exact baseline grant
 must restore it. Post-replay sentinels test every supported relation and
 sequence privilege, including INSERT-only and sequence SELECT-only defaults.
+
+## Catalog rendering
+
+Function definitions, policy expressions and identity arguments are rendered
+text. `quote_all_identifiers` and `standard_conforming_strings` change that text
+without any catalog change, and can be set per role, database or session.
+`snapshot.sql` and every apply transaction therefore start with
+`RENDERING_PREAMBLE` from `proof-support.mjs`: both settings pinned with
+`SET LOCAL`, then a guard that stops on any PostgreSQL major version other than
+17. Recovery guards hash rendered definitions, so they run under the same pins.
+
+The database proof sets both values the other way for the session and checks
+that unpinned rendering changes, the pinned snapshot does not, pinned recovery
+accepts the reviewed definitions and still rejects an unknown one, and an apply
+transaction still detects drift and rolls back. A PostgreSQL major upgrade
+needs a reviewed refresh of the pinned definition hashes and of the version in
+the preamble; never relax the guard to get past it.
 
 ## Source guard
 
@@ -158,3 +176,65 @@ The proof pins the repair checkpoint separately in rpc-repair-summary.json.
 Future table/index migrations run after that checkpoint and use the final
 expected-summary.json and role/security contracts. They do not get folded into
 the RPC-only transaction or require rewriting the applied repair checkpoint.
+
+## Production rollout of #258 and #243 (applied 2026-11-17)
+
+Applied to production on 2026-11-17 through the guarded transaction below. A
+fresh snapshot matched `before-pending-summary.json` before the apply and
+`expected-summary.json` after it, and both files are in the ledger.
+`pendingProductionMigrations` is empty again; the next rollout lists its files
+there and pins its own before-state. The files were:
+
+1. `20261117010000_remove_validate_api_token_is_pro.sql` recreates
+   `validate_api_token(text)` without the always-FALSE `is_pro` column (#258).
+   Its EXECUTE stays service-only, and only the web server calls it.
+2. `20261117020000_narrow_client_role_privileges.sql` narrows client roles
+   (#243). service_role and default privileges do not change.
+   - **anon:** SELECT on `bundles`.
+   - **authenticated:** SELECT and DELETE on `bundles`, UPDATE of the columns
+     the PATCH route allows, and SELECT on `profiles`.
+   - **Everything else:** no client-role table privileges.
+   - **RPCs only the server calls become service-only:** the device-code
+     functions, cleanup, invite accept, `generate_secure_token`,
+     `generate_invite_token`, `generate_team_slug`, `generate_user_code`, and
+     the trigger functions. Triggers still fire.
+   - **`generate_share_slug()`** loses anon EXECUTE only; `authenticated` keeps
+     it because the bundles PATCH route calls it.
+   - **Unchanged:** `get_user_team_ids()` and `is_team_admin(uuid)` keep anon
+     and authenticated EXECUTE, because bundle and team policies call them.
+
+`application-access.sql` proves the result with real queries as each role:
+- Application paths work.
+- Cross-user reads and writes, direct inserts, TRUNCATE, owner and team
+  column writes, and the service-only RPCs fail.
+- Negative controls restore single grants and must fail the check.
+
+The proof also rehearses the apply. It pins the current production state
+(`before-pending-summary.json`), applies both files through
+`buildApplyTransaction` with `changedCategories` from
+`pendingChangeCategories`, and requires the following:
+- An extra anonymous grant rolls back the SQL and the ledger.
+- The clean apply reaches exactly `expected-summary.json`.
+
+To apply:
+1. Take a fresh production snapshot and ledger, as in the production procedure
+   above.
+2. Require conformance to `before-pending-summary.json`.
+3. Pass the reviewed post-state as `{ snapshot, summary, changedCategories }`,
+   using the proof's `reviewed-pending-apply.json` routines and ACLs. Every
+   unchanged category comes from the fresh production snapshot.
+4. After merge, clear `pendingProductionMigrations` in the same change that
+   records the new production state.
+
+The write policies on `api_sessions`, `profiles`, `teams`, `team_members` and
+`team_invites` stay in place as a second layer, but no client role can reach
+them without a table grant. They are not evidence that client writes are
+validated; re-granting a client write needs its own review.
+
+If client access misbehaves after rollout, re-grant only the privilege that
+broke (for example `GRANT EXECUTE ON FUNCTION ... TO authenticated;`) in a new
+reviewed migration rather than restoring the old blanket grants. To restore
+`is_pro`, drop `validate_api_token(text)` and recreate it from
+`20261115190000_make_all_features_free.sql`, then repeat its REVOKE/GRANT pair;
+the web server works with either result shape.
+

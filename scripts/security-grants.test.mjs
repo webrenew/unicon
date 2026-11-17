@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { assertSecurityPosture } from './data-api-grants/security-posture.mjs'
 import { verifySecurityControls } from './data-api-grants/security-controls.mjs'
-import { assertSnapshotContract, proofDirectory, snapshotQueryBody, writeProofSnapshot } from './data-api-grants/proof-support.mjs'
+import { assertSnapshotContract, POSTGRES_MAJOR_VERSION, proofDirectory, RENDERING_PREAMBLE, snapshotQueryBody, writeProofSnapshot } from './data-api-grants/proof-support.mjs'
 import { compareSnapshots, summarize } from './data-api-grants/metadata.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -18,12 +18,24 @@ test('omitting the private-object decision fails closed', () => {
   assert.throws(() => assertSecurityPosture(snapshot(), omitted), /Explicit private-object contract required/)
 })
 test('snapshot fixtures fail clearly when transaction wrappers change', () => {
-  const valid = 'begin isolation level repeatable read read only;\nselect 1;\ncommit;'
+  const valid = `begin isolation level repeatable read read only;\n${RENDERING_PREAMBLE}\nselect 1;\ncommit;`
   assert.equal(snapshotQueryBody(valid).trim(), 'select 1;')
   for (const sql of [valid.replace('begin isolation level repeatable read read only;', 'begin;'),
     valid.replace('commit;', ''), valid.replace('select 1;', 'set transaction read only;\nselect 1;')]) {
     assert.throws(() => snapshotQueryBody(sql))
   }
+})
+test('snapshots pin catalog rendering settings and the PostgreSQL major version', async () => {
+  const sql = await readFile(join(root, 'scripts/data-api-grants/snapshot.sql'), 'utf8')
+  snapshotQueryBody(sql)
+  for (const line of RENDERING_PREAMBLE.split('\n')) {
+    assert.throws(() => snapshotQueryBody(sql.replace(line + '\n', '')), /pin catalog rendering/)
+  }
+  assert.throws(() => snapshotQueryBody(sql.replace('with objects as (',
+    'with settings as (select current_setting(\'quote_all_identifiers\')), objects as (')), /pinned preamble/)
+  assert.match(RENDERING_PREAMBLE, /set local quote_all_identifiers = off;/)
+  assert.match(RENDERING_PREAMBLE, /set local standard_conforming_strings = on;/)
+  assert.match(RENDERING_PREAMBLE, new RegExp(`/ 10000 <> ${POSTGRES_MAJOR_VERSION} then`))
 })
 test('operational backups cannot gain client access by refreshing digests', () => {
   const current = snapshot()

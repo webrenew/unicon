@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { categories } from './metadata.mjs'
-import { assertSnapshotContract, snapshotQueryBody } from './proof-support.mjs'
+import { assertSnapshotContract, RENDERING_PREAMBLE, snapshotQueryBody } from './proof-support.mjs'
 
 function literal(value, tag, occupied) {
   let suffix = tag
@@ -18,7 +18,14 @@ export function buildApplyTransaction(snapshotSql, expected, ledger, migrations,
   assert.deepEqual(Object.keys(expectedAfter).sort(), [...categories, 'defaults'].sort(),
     'A complete reviewed post-state snapshot is required')
   assertSnapshotContract(expectedAfter, reviewedChange?.summary ?? reviewedSummary, 'Reviewed post-state snapshot')
-  for (const category of [...categories, 'defaults'].filter(name => name !== 'routines')) {
+  // A reviewed change names the categories it may change; by default only
+  // routines (the RPC repair). Default privileges never change in an apply.
+  const changing = new Set(reviewedChange?.changedCategories ?? ['routines'])
+  assert.ok(!changing.has('defaults'), 'Default privileges must not change in a reviewed apply')
+  for (const category of changing) {
+    assert.ok(categories.includes(category), `Unknown reviewed change category: ${category}`)
+  }
+  for (const category of [...categories, 'defaults'].filter(name => !changing.has(name))) {
     assert.deepEqual(expectedAfter[category], expected[category],
       `RPC repair must preserve current production metadata: ${category}`)
   }
@@ -41,6 +48,8 @@ export function buildApplyTransaction(snapshotSql, expected, ledger, migrations,
   while (content.includes('$' + outer + '$')) outer += '_'
   const sql = [
     'begin isolation level repeatable read;',
+    // Recovery guards hash rendered definitions, so migrations run pinned too.
+    RENDERING_PREAMBLE,
     "set local lock_timeout = '5s';",
     "set local statement_timeout = '60s';",
     'do $' + outer + '$',

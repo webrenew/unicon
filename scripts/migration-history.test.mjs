@@ -119,6 +119,9 @@ test('apply transaction requires a complete snapshot and an unapplied exact file
   assert.throws(() => buildApplyTransaction(sql, { ...expected, roles: [{ role: 'unreviewed' }] },
     ledger, migrations, summarize(expected)), /Permission contract mismatch: roles/)
   assert.ok(transaction.startsWith('begin isolation level repeatable read;'))
+  const { RENDERING_PREAMBLE } = await import('./data-api-grants/proof-support.mjs')
+  assert.ok(transaction.startsWith('begin isolation level repeatable read;\n' + RENDERING_PREAMBLE + '\n'),
+    'Apply transactions pin catalog rendering before the first snapshot or migration')
   assert.equal(transaction.split('into observed\nfrom (values').length - 1, 2)
   assert.ok(transaction.includes('Production migration ledger changed'))
   assert.ok(transaction.includes('transaction rolled back'))

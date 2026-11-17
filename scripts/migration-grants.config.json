@@ -1,5 +1,7 @@
 {
   "reviewedChangeMigrations": ["20261023010000_secure_bundle_rpc.sql"],
+  "pendingProductionMigrations": [],
+  "pendingChangeCategories": [],
   "rpcRepairTarget": "public.create_bundle_atomic(uuid, text, text, jsonb, text, boolean, numeric, boolean, text)",
   "mode": "migrations",
   "directory": "supabase/migrations",
