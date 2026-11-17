@@ -43,6 +43,23 @@ transactions. A server SELECT revoke must fail and the exact baseline grant
 must restore it. Post-replay sentinels test every supported relation and
 sequence privilege, including INSERT-only and sequence SELECT-only defaults.
 
+## Catalog rendering
+
+Function definitions, policy expressions and identity arguments are rendered
+text. `quote_all_identifiers` and `standard_conforming_strings` change that text
+without any catalog change, and can be set per role, database or session.
+`snapshot.sql` and every apply transaction therefore start with
+`RENDERING_PREAMBLE` from `proof-support.mjs`: both settings pinned with
+`SET LOCAL`, then a guard that stops on any PostgreSQL major version other than
+17. Recovery guards hash rendered definitions, so they run under the same pins.
+
+The database proof sets both values the other way for the session and checks
+that unpinned rendering changes, the pinned snapshot does not, pinned recovery
+accepts the reviewed definitions and still rejects an unknown one, and an apply
+transaction still detects drift and rolls back. A PostgreSQL major upgrade
+needs a reviewed refresh of the pinned definition hashes and of the version in
+the preamble; never relax the guard to get past it.
+
 ## Source guard
 
 Each new public table, view, replacement view, materialized view or sequence

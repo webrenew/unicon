@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { categories } from './metadata.mjs'
-import { assertSnapshotContract, snapshotQueryBody } from './proof-support.mjs'
+import { assertSnapshotContract, RENDERING_PREAMBLE, snapshotQueryBody } from './proof-support.mjs'
 
 function literal(value, tag, occupied) {
   let suffix = tag
@@ -41,6 +41,8 @@ export function buildApplyTransaction(snapshotSql, expected, ledger, migrations,
   while (content.includes('$' + outer + '$')) outer += '_'
   const sql = [
     'begin isolation level repeatable read;',
+    // Recovery guards hash rendered definitions, so migrations run pinned too.
+    RENDERING_PREAMBLE,
     "set local lock_timeout = '5s';",
     "set local statement_timeout = '60s';",
     'do $' + outer + '$',

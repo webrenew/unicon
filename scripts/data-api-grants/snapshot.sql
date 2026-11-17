@@ -1,5 +1,10 @@
 -- Read metadata only. No application rows or credentials are exported.
+-- The three statements after BEGIN pin catalog rendering and the PostgreSQL
+-- major version; they must match RENDERING_PREAMBLE in proof-support.mjs.
 begin isolation level repeatable read read only;
+set local quote_all_identifiers = off;
+set local standard_conforming_strings = on;
+do $postgres_major$ begin if current_setting('server_version_num')::int / 10000 <> 17 then raise exception 'PostgreSQL major version changed; review catalog rendering and pinned definition hashes before using this snapshot'; end if; end $postgres_major$;
 with objects as (
   select c.oid, n.nspname, c.relname, c.relkind, c.relowner,
     c.relacl, c.relrowsecurity, c.relforcerowsecurity

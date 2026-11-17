@@ -20,13 +20,33 @@ export function parseProofArguments(args) {
   return { help: values.help, snapshotDirectory: values['snapshot-dir'] }
 }
 
+// Function definitions, policy expressions and identity arguments are rendered
+// text, and a role, database or session setting can change that text without
+// any catalog change (#245). Every snapshot and apply transaction pins the two
+// settings that affect rendering, and refuses another PostgreSQL major version:
+// an upgrade needs a reviewed refresh of the pinned definition hashes.
+export const POSTGRES_MAJOR_VERSION = 17
+export const RENDERING_PREAMBLE = [
+  'set local quote_all_identifiers = off;',
+  'set local standard_conforming_strings = on;',
+  "do $postgres_major$ begin if current_setting('server_version_num')::int / 10000 <> "
+    + POSTGRES_MAJOR_VERSION + " then raise exception 'PostgreSQL major version changed; "
+    + "review catalog rendering and pinned definition hashes before using this snapshot'; end if; end $postgres_major$;",
+].join('\n')
+
+const snapshotBegin = 'begin isolation level repeatable read read only;'
+
 export function snapshotQueryBody(sql) {
   const begin = /^begin isolation level repeatable read read only;$/gm
   const commit = /^commit;$/gm
   assert.equal([...sql.matchAll(begin)].length, 1, 'Expected one read-only snapshot BEGIN wrapper')
   assert.equal([...sql.matchAll(commit)].length, 1, 'Expected one snapshot COMMIT wrapper')
-  const body = sql.replace(begin, '').replace(commit, '')
+  assert.ok(sql.includes(snapshotBegin + '\n' + RENDERING_PREAMBLE + '\n'),
+    'Snapshot must pin catalog rendering settings right after BEGIN')
+  const body = sql.replace(snapshotBegin + '\n' + RENDERING_PREAMBLE + '\n', '').replace(commit, '')
   assert.doesNotMatch(body, /^\s*(?:begin|commit|set\s+transaction)\b/im, 'Unexpected transaction statement in snapshot query')
+  assert.doesNotMatch(body, /\b(?:quote_all_identifiers|standard_conforming_strings|server_version_num)\b/i,
+    'Catalog rendering settings belong only in the pinned preamble')
   return body
 }
 

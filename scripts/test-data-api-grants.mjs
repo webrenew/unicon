@@ -13,8 +13,8 @@ import { assertRoutineAccess } from './data-api-grants/routine-access.mjs'
 import { buildApplyTransaction } from './data-api-grants/transaction.mjs'
 import { replayPlan, repairStages } from './data-api-grants/replay-plan.mjs'
 import { auditMigrationGrants } from './check-migration-grants.mjs'
-import { assertSnapshotContract, parseProofArguments, proofDirectory,
-  proofUsage, snapshotQueryBody, stopProofDatabase, writeProofSnapshot } from './data-api-grants/proof-support.mjs'
+import { assertSnapshotContract, parseProofArguments, POSTGRES_MAJOR_VERSION, proofDirectory,
+  proofUsage, RENDERING_PREAMBLE, snapshotQueryBody, stopProofDatabase, writeProofSnapshot } from './data-api-grants/proof-support.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const config = JSON.parse(readFileSync(join(root, 'scripts/migration-grants.config.json'), 'utf8'))
@@ -48,9 +48,52 @@ function capture(name, verifyFinal = true) {
 
 function securityFixture(name, sql) {
   const body = snapshotQueryBody(snapshotSql)
-  const current = JSON.parse(query(`begin; ${sql}\n${body}\nrollback;`))
+  const current = JSON.parse(query(`begin;\n${RENDERING_PREAMBLE}\n${sql}\n${body}\nrollback;`))
   writeProofSnapshot(outputDirectory, name, current)
   return current
+}
+
+// A role, database or session default can change how PostgreSQL renders
+// definitions and policy expressions (#245). Session-level SETs before BEGIN
+// stand in for those defaults: psql runs all statements in one session.
+const alteredRendering = 'set quote_all_identifiers = on;\nset standard_conforming_strings = off;\n'
+
+function verifyRenderingSettings(expected, recovery) {
+  const body = snapshotQueryBody(snapshotSql)
+  const raw = JSON.parse(query(`${alteredRendering}begin;\n${body}\ncommit;`))
+  assert.notDeepEqual(compareSnapshots(expected, raw), [],
+    'Altered session settings must change unpinned catalog rendering, or this check proves nothing')
+  assert.deepEqual(compareSnapshots(expected, JSON.parse(query(alteredRendering + snapshotSql))), [],
+    'The snapshot must render the same catalog identically under altered session settings')
+  assert.throws(() => query(`${alteredRendering}begin;\n${recovery}\nrollback;`),
+    /Unrecognized .* definition; recovery aborted/, 'Unpinned recovery guards see re-rendered definitions')
+  const pinned = JSON.parse(query(`${alteredRendering}begin;\n${RENDERING_PREAMBLE}\n${recovery}\n${body}\nrollback;`))
+  assert.deepEqual(compareSnapshots(expected, pinned), [], 'Pinned recovery must accept every reviewed definition')
+  for (const signature of config.rpcRecoveryFunctions ?? []) {
+    const name = signature.slice('public.'.length).split('(')[0]
+    const original = expected.routines.find(row => row.schema === 'public' && row.name === name)
+    const hotfix = original.definition.replace('AS $function$\n', 'AS $function$\n-- unreviewed hotfix\n')
+    assert.throws(() => query(`${alteredRendering}begin;\n${RENDERING_PREAMBLE}\n${hotfix};\n${recovery}\nrollback;`),
+      /Unrecognized .* definition; recovery aborted/, 'Pinned recovery must still reject unknown definitions')
+  }
+  const historySql = 'select jsonb_agg(to_jsonb(m) order by version) from supabase_migrations.schema_migrations m;'
+  const ledger = JSON.parse(query(historySql))
+  const reviewed = summarize(expected)
+  const noop = buildApplyTransaction(snapshotSql, expected, ledger,
+    [{ filename: '20990103000000_rendering_noop.sql', sql: "set local application_name = 'grants_rendering_noop';" }], reviewed)
+  query(alteredRendering + noop.replace(/commit;\s*$/, 'rollback;'))
+  const table = expected.objects.find((row) => row.kind === 'r')
+  assert.throws(() => query(alteredRendering + buildApplyTransaction(snapshotSql, expected, ledger,
+    [{ filename: '20990104000000_rendering_drift.sql',
+      sql: `revoke select on public."${table.name.replaceAll('"', '""')}" from anon;` }], reviewed)),
+  /Permission contract drift after migration/, 'Apply must still detect drift under altered session settings')
+  assert.deepEqual(JSON.parse(query(historySql)), ledger, 'Rendering checks must not record a migration')
+  const otherMajor = snapshotSql.replace(`/ 10000 <> ${POSTGRES_MAJOR_VERSION} then`, `/ 10000 <> ${POSTGRES_MAJOR_VERSION - 1} then`)
+  assert.notEqual(otherMajor, snapshotSql, 'Major version fixture must change the guard')
+  assert.throws(() => query(otherMajor), /PostgreSQL major version changed/,
+    'A PostgreSQL major upgrade must stop for review')
+  assert.deepEqual(compareSnapshots(expected, capture('after-rendering-checks', false)), [],
+    'Rendering checks must roll back')
 }
 
 function prepare() {
@@ -162,6 +205,7 @@ function proof() {
     assert.deepEqual(compareSnapshots(initial, capture(`unrecognized-rpc-rollback-${index}`, false)), [],
       'Unknown RPC definition must abort recovery and roll back its transaction')
   }
+  verifyRenderingSettings(initial, recovery)
   const stages = repairStages(replay.after, config.reviewedChangeMigrations)
   const repairedSummary = JSON.parse(readFileSync(join(root, 'scripts/data-api-grants/rpc-repair-summary.json'), 'utf8'))
   verifyReviewedRpcRepair(stages.repair, initial, beforeSummary, repairedSummary)
