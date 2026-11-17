@@ -28,10 +28,10 @@ describe("Sentry instrumentation files", () => {
     const client = read("src/instrumentation-client.ts");
     const serverInits = server.match(/Sentry\.init\(/g) ?? [];
     expect(serverInits).toHaveLength(2);
-    expect(server.match(/serveTunnelIntegration\(\{ path: SENTRY_TUNNEL_PATH \}\)/g)).toHaveLength(2);
-    expect(server.match(/dataCollection: SENTRY_DATA_COLLECTION/g)).toHaveLength(2);
-    expect(client).toContain("tunnel: { path: SENTRY_TUNNEL_PATH }");
-    expect(client).toContain("dataCollection: SENTRY_DATA_COLLECTION");
+    expect(server.match(/serveTunnelIntegration\(\s*\{\s*path:\s*SENTRY_TUNNEL_PATH/g)).toHaveLength(2);
+    expect(server.match(/dataCollection:\s*SENTRY_DATA_COLLECTION/g)).toHaveLength(2);
+    expect(client).toMatch(/tunnel:\s*\{\s*path:\s*SENTRY_TUNNEL_PATH/);
+    expect(client).toMatch(/dataCollection:\s*SENTRY_DATA_COLLECTION/);
     expect(SENTRY_TUNNEL_PATH).toBe("/monitoring");
   });
 });
@@ -47,7 +47,7 @@ describe("SENTRY_DATA_COLLECTION", () => {
       stackFrameVariables: false,
     });
     const headers = JSON.stringify(SENTRY_DATA_COLLECTION.httpHeaders).toLowerCase();
-    for (const credential of ["authorization", "cookie", "apikey", "x-api-key"]) {
+    for (const credential of ["authorization", "cookie", "apikey", "x-api-key", "referer"]) {
       expect(headers).not.toContain(credential);
     }
   });
