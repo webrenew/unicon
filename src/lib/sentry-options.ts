@@ -45,3 +45,55 @@ export const SENTRY_DATA_COLLECTION = {
  * reports errors to Sentry, so drop every log event.
  */
 export const dropSentryLog = (): null => null;
+
+/**
+ * Mechanism `@sentry/browser`'s globalHandlersIntegration sets on unhandled
+ * promise rejections. sentry-options.test.ts reads the installed SDK, so an
+ * upstream rename fails CI instead of silently disabling the filter below.
+ */
+export const UNHANDLED_REJECTION_MECHANISM = "auto.browser.global_handlers.onunhandledrejection";
+const MINIFIED_CONNECTION_CLOSED = /^Minified React error #412;/;
+const DEV_CONNECTION_CLOSED = /^Connection closed\.$/;
+
+interface ExceptionLike {
+  value?: string | undefined;
+  mechanism?: { type?: string | undefined } | undefined;
+}
+
+interface ErrorEventLike {
+  exception?: { values?: ExceptionLike[] | undefined } | undefined;
+}
+
+/**
+ * True for an RSC stream that closed early and surfaced as an unhandled rejection.
+ *
+ * React error #412 ("Connection closed.") is thrown by Next's RSC client when a
+ * response stream ends before all chunks arrive. As an unhandled rejection it
+ * comes from a prefetch the visitor (or a bot) abandoned, which nobody sees.
+ * A cut navigation stream reaches an error boundary instead, and the
+ * boundaries report through `captureException` (a different mechanism), so
+ * that case still reaches Sentry (vercel/next.js#97337).
+ *
+ * Production React ships the minified message; the full "Connection closed."
+ * text exists only in development builds, so it is matched only there. In
+ * production an exact "Connection closed." from other code still reports.
+ *
+ * Only the last exception is read: Sentry lists a chain innermost first and the
+ * global handler puts its mechanism on the outermost (last) entry. React throws
+ * #412 without a `cause`, so these events carry a single value.
+ */
+export function isAbortedRscStreamRejection(event: ErrorEventLike, isProduction: boolean): boolean {
+  const exceptions = event.exception?.values;
+  const lastException = exceptions?.[exceptions.length - 1];
+  if (lastException?.mechanism?.type !== UNHANDLED_REJECTION_MECHANISM) return false;
+
+  const message = lastException.value ?? "";
+  if (MINIFIED_CONNECTION_CLOSED.test(message)) return true;
+  return !isProduction && DEV_CONNECTION_CLOSED.test(message);
+}
+
+/** Browser `beforeSend`: drop abandoned RSC prefetch streams, keep everything else. */
+export function createClientBeforeSend(isProduction: boolean) {
+  return <TEvent extends ErrorEventLike>(event: TEvent): TEvent | null =>
+    isAbortedRscStreamRejection(event, isProduction) ? null : event;
+}
