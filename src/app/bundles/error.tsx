@@ -1,6 +1,8 @@
 "use client";
 
+import * as Sentry from "@sentry/nextjs";
 import Link from "next/link";
+import { useEffect } from "react";
 
 export default function BundlesError({
   error,
@@ -9,6 +11,13 @@ export default function BundlesError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // A caught error never reaches Sentry's global handlers, so report it here,
+  // as global-error.tsx does. This keeps cut navigations (React #412) visible
+  // while the client beforeSend drops abandoned prefetches.
+  useEffect(() => {
+    Sentry.captureException(error);
+  }, [error]);
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-20 text-center">
       <h1 className="text-xl font-medium text-foreground">Unable to load bundle data</h1>
